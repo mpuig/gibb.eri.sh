@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-wikipedia-city-lookup"
+description = "Enables the wikipedia_city_lookup command without any pre-configured scope."
+commands.allow = ["wikipedia_city_lookup"]
+
+[[permission]]
+identifier = "deny-wikipedia-city-lookup"
+description = "Denies the wikipedia_city_lookup command without any pre-configured scope."
+commands.deny = ["wikipedia_city_lookup"]

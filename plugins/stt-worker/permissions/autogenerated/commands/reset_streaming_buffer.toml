@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-reset-streaming-buffer"
+description = "Enables the reset_streaming_buffer command without any pre-configured scope."
+commands.allow = ["reset_streaming_buffer"]
+
+[[permission]]
+identifier = "deny-reset-streaming-buffer"
+description = "Denies the reset_streaming_buffer command without any pre-configured scope."
+commands.deny = ["reset_streaming_buffer"]

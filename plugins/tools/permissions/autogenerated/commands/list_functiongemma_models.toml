@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-list-functiongemma-models"
+description = "Enables the list_functiongemma_models command without any pre-configured scope."
+commands.allow = ["list_functiongemma_models"]
+
+[[permission]]
+identifier = "deny-list-functiongemma-models"
+description = "Denies the list_functiongemma_models command without any pre-configured scope."
+commands.deny = ["list_functiongemma_models"]

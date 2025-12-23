@@ -1,0 +1,96 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/desktop/src-tauri",
+    "crates/*",
+    "plugins/*",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/mpuig/gibb.eri.sh"
+
+[workspace.dependencies]
+# Tauri
+tauri = "2"
+tauri-build = "2"
+tauri-plugin = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-specta = "2.0.0-rc.21"
+specta = { version = "2.0.0-rc", features = ["derive"] }
+
+# Audio
+cpal = "0.15"
+dasp = { version = "0.11", features = ["interpolate", "interpolate-linear", "signal"] }
+hound = "3.5"
+ringbuf = "0.4"
+
+# macOS native APIs
+cidre = "0.11.4"
+
+# System info
+sysinfo = "0.32"
+plist = "1.7"
+
+# STT
+whisper-rs = "0.12"
+
+# Parakeet (ONNX-based, cross-platform)
+gibberish-parakeet = { path = "crates/parakeet" }
+
+# ML / Inference
+ort = { version = "2.0.0-rc.10", features = ["download-binaries"] }
+
+# Voice Activity Detection
+silero = { git = "https://github.com/emotechlab/silero-rs", rev = "26a6460" }
+
+# Async
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+futures = "0.3"
+async-stream = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Utilities
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5"
+reqwest = { version = "0.12", features = ["json"] }
+
+# Internal crates
+gibberish-application = { path = "crates/application" }
+gibberish-audio = { path = "crates/audio" }
+gibberish-stt = { path = "crates/stt" }
+gibberish-vad = { path = "crates/vad" }
+gibberish-diarization = { path = "crates/diarization" }
+gibberish-transcript = { path = "crates/transcript" }
+gibberish-models = { path = "crates/models" }
+gibberish-storage = { path = "crates/storage" }
+gibberish-detect = { path = "crates/detect" }
+
+# Internal plugins
+tauri-plugin-gibberish-tray = { path = "plugins/tray" }
+tauri-plugin-gibberish-recorder = { path = "plugins/recorder" }
+tauri-plugin-gibberish-stt = { path = "plugins/stt-worker" }
+tauri-plugin-gibberish-permissions = { path = "plugins/permissions" }
+tauri-plugin-gibberish-detect = { path = "plugins/detect" }
+tauri-plugin-gibberish-tools = { path = "plugins/tools" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,9 @@
+[package]
+name = "gibberish-vad"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+silero.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

@@ -1,0 +1,18 @@
+[package]
+name = "tauri-plugin-gibberish-detect"
+version.workspace = true
+edition.workspace = true
+links = "tauri-plugin-gibberish-detect"
+
+[build-dependencies]
+tauri-plugin = { workspace = true, features = ["build"] }
+
+[dependencies]
+tauri.workspace = true
+tauri-plugin.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+serde = { workspace = true, features = ["derive"] }
+uuid.workspace = true
+
+gibberish-detect.workspace = true

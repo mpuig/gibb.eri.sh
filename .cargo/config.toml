@@ -1,0 +1,5 @@
+[env]
+# Use macOS 15 SDK for compatibility with screencapturekit crate
+# This prevents ABI issues when the default SDK is newer than the running OS
+SDKROOT = { value = "/Library/Developer/CommandLineTools/SDKs/MacOSX15.sdk", force = true }
+MACOSX_DEPLOYMENT_TARGET = { value = "13.0", force = true }

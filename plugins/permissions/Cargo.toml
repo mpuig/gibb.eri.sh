@@ -1,0 +1,17 @@
+[package]
+name = "tauri-plugin-gibberish-permissions"
+version.workspace = true
+edition.workspace = true
+links = "tauri-plugin-gibberish-permissions"
+
+[build-dependencies]
+tauri-plugin = { workspace = true, features = ["build"] }
+
+[dependencies]
+tauri.workspace = true
+tauri-plugin.workspace = true
+serde.workspace = true
+tracing.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = "0.24"

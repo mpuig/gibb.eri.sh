@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-transcribe-streaming-chunk"
+description = "Enables the transcribe_streaming_chunk command without any pre-configured scope."
+commands.allow = ["transcribe_streaming_chunk"]
+
+[[permission]]
+identifier = "deny-transcribe-streaming-chunk"
+description = "Denies the transcribe_streaming_chunk command without any pre-configured scope."
+commands.deny = ["transcribe_streaming_chunk"]

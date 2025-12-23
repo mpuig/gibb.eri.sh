@@ -1,0 +1,11 @@
+[package]
+name = "gibberish-application"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+gibberish-stt.workspace = true
+gibberish-parakeet.workspace = true
+gibberish-vad.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

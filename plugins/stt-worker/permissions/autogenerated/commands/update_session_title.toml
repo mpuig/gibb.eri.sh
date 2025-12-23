@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-update-session-title"
+description = "Enables the update_session_title command without any pre-configured scope."
+commands.allow = ["update_session_title"]
+
+[[permission]]
+identifier = "deny-update-session-title"
+description = "Denies the update_session_title command without any pre-configured scope."
+commands.deny = ["update_session_title"]

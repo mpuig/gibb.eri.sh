@@ -1,0 +1,10 @@
+[package]
+name = "gibberish-parakeet"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+parakeet-rs = { git = "https://github.com/altunenes/parakeet-rs" }
+thiserror.workspace = true
+tracing.workspace = true
+gibberish-stt.workspace = true

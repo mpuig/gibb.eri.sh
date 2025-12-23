@@ -1,0 +1,25 @@
+[package]
+name = "tauri-plugin-gibberish-stt"
+version.workspace = true
+edition.workspace = true
+links = "tauri-plugin-gibberish-stt"
+
+[build-dependencies]
+tauri-plugin = { workspace = true, features = ["build"] }
+
+[dependencies]
+tauri.workspace = true
+tauri-plugin.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+tokio-util = "0.7"
+uuid.workspace = true
+chrono.workspace = true
+gibberish-application.workspace = true
+gibberish-stt.workspace = true
+gibberish-parakeet.workspace = true
+gibberish-models.workspace = true
+gibberish-transcript.workspace = true
+gibberish-storage.workspace = true

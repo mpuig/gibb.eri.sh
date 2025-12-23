@@ -1,0 +1,23 @@
+fn main() {
+    tauri_plugin::Builder::new(&[
+        "list_models",
+        "download_model",
+        "cancel_download",
+        "is_downloading",
+        "load_model",
+        "unload_model",
+        "get_current_model",
+        "transcribe_audio",
+        "transcribe_file",
+        "transcribe_streaming_chunk",
+        "reset_streaming_buffer",
+        "get_streaming_buffer_duration",
+        "save_session",
+        "list_sessions",
+        "get_session",
+        "delete_session",
+        "update_session_title",
+        "search_sessions",
+    ])
+    .build();
+}

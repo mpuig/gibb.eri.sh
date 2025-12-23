@@ -1,0 +1,19 @@
+[package]
+name = "gibberish-audio"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+cpal.workspace = true
+dasp.workspace = true
+hound.workspace = true
+tokio.workspace = true
+futures.workspace = true
+async-stream.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde.workspace = true
+ringbuf.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cidre.workspace = true
