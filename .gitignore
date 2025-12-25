@@ -47,3 +47,7 @@ temp/
 
 # OS files
 Thumbs.db
+
+# Local tools
+.beads/
+.claude/

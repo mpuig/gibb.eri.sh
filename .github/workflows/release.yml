@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install dependencies (desktop)
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Build Tauri app
+        id: tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: 'gibb.eri.sh ${{ github.ref_name }}'
+          releaseBody: |
+            See the [CHANGELOG](https://github.com/mpuig/gibb.eri.sh/blob/main/CHANGELOG.md) for details.
+
+            ## Installation
+
+            Download the `.dmg` file below and drag gibb.eri.sh to your Applications folder.
+
+            **Note:** This is an unsigned build. On first launch, right-click the app and select "Open" to bypass Gatekeeper.
+          releaseDraft: true
+          prerelease: false
+
+      - name: Upload stable-named DMG
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the generated DMG
+          DMG_PATH=$(find apps/desktop/src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          if [ -n "$DMG_PATH" ]; then
+            # Upload with stable name to the release
+            gh release upload ${{ github.ref_name }} "$DMG_PATH" --clobber
+            cp "$DMG_PATH" "gibb.eri.sh-macos.dmg"
+            gh release upload ${{ github.ref_name }} "gibb.eri.sh-macos.dmg" --clobber
+          fi
