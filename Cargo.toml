@@ -63,6 +63,9 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 anyhow = "1"
 thiserror = "2"
 
+# Channels
+crossbeam-channel = "0.5"
+
 # Utilities
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -81,6 +84,10 @@ gibberish-transcript = { path = "crates/transcript" }
 gibberish-models = { path = "crates/models" }
 gibberish-storage = { path = "crates/storage" }
 gibberish-detect = { path = "crates/detect" }
+gibberish-sherpa = { path = "crates/sherpa" }
+gibberish-turn = { path = "crates/turn" }
+gibberish-smart-turn = { path = "crates/smart-turn" }
+gibberish-bus = { path = "crates/bus" }
 
 # Internal plugins
 tauri-plugin-gibberish-tray = { path = "plugins/tray" }

@@ -2,6 +2,52 @@ use std::time::Duration;
 
 pub use silero::{VadConfig, VadSession, VadTransition};
 
+/// User-configurable VAD settings.
+#[derive(Debug, Clone, Copy)]
+pub struct VadSettings {
+    /// Time to wait (ms) after speech ends before finalizing (500 = default).
+    /// Lower values give faster commits but may cut mid-sentence pauses.
+    pub redemption_time_ms: u32,
+    /// Minimum speech duration (ms) to trigger detection (100 = default).
+    pub min_speech_time_ms: u32,
+}
+
+impl Default for VadSettings {
+    fn default() -> Self {
+        Self {
+            redemption_time_ms: 500,
+            min_speech_time_ms: 100,
+        }
+    }
+}
+
+impl VadSettings {
+    /// Responsive mode (250ms). Matches Sherpa C++ example.
+    /// Best for fast speakers, may cut mid-pause for slower speakers.
+    pub fn responsive() -> Self {
+        Self {
+            redemption_time_ms: 250,
+            min_speech_time_ms: 100,
+        }
+    }
+
+    /// Create dictation-mode settings (fast commits).
+    pub fn dictation() -> Self {
+        Self {
+            redemption_time_ms: 300,
+            min_speech_time_ms: 100,
+        }
+    }
+
+    /// Create meeting-mode settings (longer pauses allowed).
+    pub fn meeting() -> Self {
+        Self {
+            redemption_time_ms: 1000,
+            min_speech_time_ms: 150,
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum VadError {
     #[error("model not loaded")]
@@ -28,16 +74,16 @@ pub struct SileroVad {
 
 impl SileroVad {
     pub fn new(sample_rate: u32) -> Result<Self> {
+        Self::with_settings(sample_rate, VadSettings::default())
+    }
+
+    pub fn with_settings(sample_rate: u32, settings: VadSettings) -> Result<Self> {
         let config = VadConfig {
             sample_rate: sample_rate as usize,
-            // Redemption time: how long silence before speech ends
-            redemption_time: Duration::from_millis(500),
-            // Padding before speech start
+            redemption_time: Duration::from_millis(settings.redemption_time_ms as u64),
             pre_speech_pad: Duration::from_millis(200),
-            // Padding after speech end
             post_speech_pad: Duration::from_millis(200),
-            // Minimum speech duration
-            min_speech_time: Duration::from_millis(100),
+            min_speech_time: Duration::from_millis(settings.min_speech_time_ms as u64),
             ..Default::default()
         };
 
@@ -95,8 +141,14 @@ impl SileroVad {
 
 #[derive(Debug, Clone)]
 pub enum VadEvent {
-    SpeechStart { timestamp_ms: u64 },
-    SpeechEnd { start_ms: u64, end_ms: u64, samples: Vec<f32> },
+    SpeechStart {
+        timestamp_ms: u64,
+    },
+    SpeechEnd {
+        start_ms: u64,
+        end_ms: u64,
+        samples: Vec<f32>,
+    },
 }
 
 pub trait VoiceActivityDetector: Send + Sync {

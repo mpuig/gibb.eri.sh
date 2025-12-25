@@ -9,7 +9,7 @@ A private, local speech-to-text transcription app for macOS. All processing happ
 - **Multiple Audio Sources** - Record microphone, system audio, or both
 - **Session Management** - Automatic saving of recordings with search and browse
 - **Export Options** - Save transcripts as plain text, SRT subtitles, or JSON
-- **ONNX-Based Models** - Fast, efficient speech recognition using NVIDIA Parakeet models
+- **Multiple ASR Backends** - NVIDIA Parakeet (ONNX) and Sherpa-ONNX Zipformer (streaming)
 
 ## Requirements
 
@@ -45,6 +45,7 @@ gibb.eri.sh/
 │   ├── diarization/      # Speaker diarization
 │   ├── models/           # Model management and downloads
 │   ├── parakeet/         # ONNX-based STT engine (Parakeet)
+│   ├── sherpa/           # Sherpa-ONNX STT engine (Zipformer transducer)
 │   ├── storage/          # SQLite persistence
 │   ├── stt/              # STT engine traits and abstractions
 │   ├── transcript/       # Transcript data structures
@@ -80,6 +81,7 @@ gibb.eri.sh uses NVIDIA Parakeet models via ONNX Runtime:
 | Parakeet TDT 0.6B V2 | ~600MB | Fast, streaming-capable (Recommended) |
 | Parakeet CTC 0.6B | ~600MB | Higher accuracy, batch processing |
 | Parakeet TDT 1.1B | ~1.1GB | Best accuracy, requires more memory |
+| Sherpa Zipformer (EN) | ~250MB | Low-latency streaming transducer (English) |
 
 Models are downloaded on first use and cached in `~/Library/Application Support/gibberish/models/`.
 

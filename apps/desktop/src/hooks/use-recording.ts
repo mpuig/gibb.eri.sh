@@ -2,6 +2,7 @@ import { useEffect, useCallback, useState, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useRecordingStore } from "../stores/recording-store";
+import { normalizeSherpaDisplayText } from "../lib/asr-text";
 import {
   useActionRouterStore,
   type RouterStatusEvent,
@@ -21,6 +22,11 @@ interface StreamingResult {
   buffer_duration_ms: number;
 }
 
+interface StreamCommitEvent {
+  text: string;
+  ts_ms: number;
+}
+
 export function useRecording() {
   const {
     isRecording,
@@ -33,6 +39,7 @@ export function useRecording() {
     setBufferDuration,
     setIsTranscribing,
     setIsFinalizing,
+    currentModel,
   } = useRecordingStore();
   const { saveSession } = useSessions();
   const [isTranscribing, setIsTranscribingLocal] = useState(false);
@@ -58,9 +65,17 @@ export function useRecording() {
           { filePath }
         );
 
+        const shouldNormalizeSherpa = currentModel.startsWith("sherpa-");
+        const normalizedSegments = shouldNormalizeSherpa
+          ? segments.map((seg) => ({
+              ...seg,
+              text: normalizeSherpaDisplayText(seg.text),
+            }))
+          : segments;
+
         // Atomically replace preview with final transcript
         // Use stable keys based on timestamps to prevent React re-renders
-        const finalSegments = segments.map((seg) => ({
+        const finalSegments = normalizedSegments.map((seg) => ({
           id: `seg-${seg.start_ms}-${seg.end_ms}`,
           text: seg.text,
           startMs: seg.start_ms,
@@ -90,27 +105,31 @@ export function useRecording() {
     [finalizeTranscript, setIsFinalizing, saveSession]
   );
 
-  const handleAudioChunk = useCallback(
-    async (samples: number[]) => {
-      try {
-        const result = await invoke<StreamingResult | null>(
-          "plugin:gibberish-stt|transcribe_streaming_chunk",
-          { audioChunk: samples }
-        );
+  // Handle streaming results from Rust audio bus pipeline
+  const handleStreamResult = useCallback(
+    (result: StreamingResult) => {
+      setBufferDuration(result.buffer_duration_ms);
+      if (result.text || result.volatile_text) {
+        const stableText = result.text?.trim() ?? "";
+        const volatileText = result.volatile_text?.trim() ?? "";
+        const shouldNormalizeSherpa = currentModel?.startsWith("sherpa-") ?? false;
+        const mergedMain = stableText || volatileText;
 
-        if (result) {
-          setBufferDuration(result.buffer_duration_ms);
-          if (result.text || result.volatile_text) {
-            setPartialText(result.text);
-            setVolatileText(result.volatile_text);
-            setIsTranscribing(true);
-          }
-        }
-      } catch (err) {
-        // Silently ignore errors during streaming - don't spam console
+        const nextPartialText = shouldNormalizeSherpa
+          ? normalizeSherpaDisplayText(mergedMain)
+          : mergedMain;
+        const nextVolatileText = shouldNormalizeSherpa && stableText
+          ? normalizeSherpaDisplayText(volatileText)
+          : stableText
+          ? volatileText
+          : "";
+
+        setPartialText(nextPartialText);
+        setVolatileText(nextVolatileText);
+        setIsTranscribing(true);
       }
     },
-    [setPartialText, setVolatileText, setBufferDuration, setIsTranscribing]
+    [setPartialText, setVolatileText, setBufferDuration, setIsTranscribing, currentModel]
   );
 
   useEffect(() => {
@@ -140,14 +159,14 @@ export function useRecording() {
         async (event) => {
           if (mounted) {
             console.log("Recording stopped:", event.payload);
-            // Reset streaming buffer
+            // Transcribe the full file for final accurate results
+            await transcribeFile(event.payload.path);
+            // Reset streaming buffer (and turn boundaries) after final transcription
             try {
               await invoke("plugin:gibberish-stt|reset_streaming_buffer");
             } catch (err) {
               console.error("Failed to reset streaming buffer:", err);
             }
-            // Transcribe the full file for final accurate results
-            await transcribeFile(event.payload.path);
           }
         }
       );
@@ -158,16 +177,27 @@ export function useRecording() {
       });
       if (mounted) unlisteners.push(error);
 
-      // Listen for audio chunks for real-time transcription
-      const audioChunk = await listen<number[]>(
-        "recorder:audio-chunk",
+      // Listen for streaming results from Rust audio bus pipeline
+      const streamResult = await listen<StreamingResult>(
+        "stt:stream_result",
         (event) => {
           if (mounted) {
-            handleAudioChunk(event.payload);
+            handleStreamResult(event.payload);
           }
         }
       );
-      if (mounted) unlisteners.push(audioChunk);
+      if (mounted) unlisteners.push(streamResult);
+
+      // Listen for stream commits (for action router)
+      const streamCommit = await listen<StreamCommitEvent>(
+        "stt:stream_commit",
+        (event) => {
+          if (mounted) {
+            console.log("[stt] commit:", event.payload.text);
+          }
+        }
+      );
+      if (mounted) unlisteners.push(streamCommit);
 
       const trayStart = await listen("tray:start-recording", () => {
         if (mounted) handleStartRecording();
@@ -218,7 +248,7 @@ export function useRecording() {
       unlisteners.forEach((fn) => fn());
       listenersSetUp = false;
     };
-  }, [transcribeFile, handleAudioChunk]);
+  }, [transcribeFile, handleStreamResult]);
 
   const handleStartRecording = async () => {
     try {
@@ -227,6 +257,8 @@ export function useRecording() {
       setVolatileText("");
       recordingStartTime.current = Date.now();
       await invoke("plugin:gibberish-stt|reset_streaming_buffer");
+      // Start the audio bus listener before recording
+      await invoke("plugin:gibberish-stt|stt_start_listening");
       await invoke("plugin:gibberish-recorder|start_recording", {
         sourceType: "combined_native",
       });
@@ -238,6 +270,8 @@ export function useRecording() {
 
   const handleStopRecording = async () => {
     try {
+      // Stop the audio bus listener
+      await invoke("plugin:gibberish-stt|stt_stop_listening");
       const path = await invoke<string>("plugin:gibberish-recorder|stop_recording");
       stopRecording();
       console.log("Recording saved to:", path);

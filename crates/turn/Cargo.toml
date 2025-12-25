@@ -1,0 +1,8 @@
+[package]
+name = "gibberish-turn"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+

@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::sync::{
-    Arc,
     atomic::{AtomicBool, Ordering},
+    Arc,
 };
 use tokio::{sync::oneshot, task::JoinHandle};
 

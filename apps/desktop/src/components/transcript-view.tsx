@@ -1,5 +1,6 @@
 import { memo, useRef, useState, useEffect } from "react";
 import { useRecordingStore, type TranscriptSegment } from "../stores/recording-store";
+import { normalizeSherpaDisplayText } from "../lib/asr-text";
 
 interface TranscriptViewProps {
   segments: TranscriptSegment[];
@@ -39,7 +40,7 @@ const SegmentItem = memo(function SegmentItem({ segment }: { segment: Transcript
         )}
       </div>
       <p
-        className="leading-relaxed"
+        className="leading-relaxed whitespace-pre-wrap"
         style={{ color: "var(--color-text-secondary)", fontSize: "0.9375rem" }}
       >
         {segment.text}
@@ -49,10 +50,17 @@ const SegmentItem = memo(function SegmentItem({ segment }: { segment: Transcript
 });
 
 export const TranscriptView = memo(function TranscriptView({ segments }: TranscriptViewProps) {
-  const { isRecording, isFinalizing, partialText, volatileText, bufferDurationMs } = useRecordingStore();
+  const { isRecording, isFinalizing, partialText, volatileText, bufferDurationMs, currentModel } = useRecordingStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const lastContentLength = useRef(0);
+  const shouldNormalizeSherpa = currentModel?.startsWith("sherpa-") ?? false;
+  const displayPartialText = shouldNormalizeSherpa
+    ? normalizeSherpaDisplayText(partialText)
+    : partialText;
+  const displayVolatileText = shouldNormalizeSherpa
+    ? normalizeSherpaDisplayText(volatileText)
+    : volatileText;
 
   // Track scroll position to detect if user scrolled up
   useEffect(() => {
@@ -82,7 +90,7 @@ export const TranscriptView = memo(function TranscriptView({ segments }: Transcr
     }
   }, [segments, partialText, isAtBottom]);
 
-  const hasContent = segments.length > 0 || partialText || volatileText;
+  const hasContent = segments.length > 0 || displayPartialText || displayVolatileText;
 
   if (!hasContent) {
     return (
@@ -111,7 +119,7 @@ export const TranscriptView = memo(function TranscriptView({ segments }: Transcr
       ))}
 
       {/* Live transcription */}
-      {isRecording && (partialText || volatileText) && (
+      {isRecording && (displayPartialText || displayVolatileText) && (
         <div className="segment segment-live animate-in">
           <div className="flex items-center gap-2 mb-2">
             <span
@@ -129,13 +137,13 @@ export const TranscriptView = memo(function TranscriptView({ segments }: Transcr
             </span>
           </div>
           <p
-            className="leading-relaxed"
+            className="leading-relaxed whitespace-pre-wrap"
             style={{ color: "var(--color-text-secondary)", fontSize: "0.9375rem" }}
           >
-            {partialText}
-            {volatileText && (
+            {displayPartialText}
+            {displayVolatileText && (
               <span style={{ opacity: 0.5 }}>
-                {partialText ? " " : ""}{volatileText}
+                {displayPartialText ? " " : ""}{displayVolatileText}
               </span>
             )}
           </p>
@@ -155,7 +163,7 @@ export const TranscriptView = memo(function TranscriptView({ segments }: Transcr
             </span>
           </div>
           <p
-            className="leading-relaxed"
+            className="leading-relaxed whitespace-pre-wrap"
             style={{ color: "var(--color-text-secondary)", fontSize: "0.9375rem" }}
           >
             {partialText}

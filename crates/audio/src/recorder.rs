@@ -17,11 +17,17 @@ impl AudioRecorder {
     }
 
     pub fn push_samples(&self, samples: &[f32]) {
-        self.samples.lock().unwrap().extend_from_slice(samples);
+        self.samples
+            .lock()
+            .expect("audio recorder mutex poisoned")
+            .extend_from_slice(samples);
     }
 
     pub fn sample_count(&self) -> usize {
-        self.samples.lock().unwrap().len()
+        self.samples
+            .lock()
+            .expect("audio recorder mutex poisoned")
+            .len()
     }
 
     pub fn duration_secs(&self) -> f32 {
@@ -29,15 +35,21 @@ impl AudioRecorder {
     }
 
     pub fn get_samples(&self) -> Vec<f32> {
-        self.samples.lock().unwrap().clone()
+        self.samples
+            .lock()
+            .expect("audio recorder mutex poisoned")
+            .clone()
     }
 
     pub fn clear(&self) {
-        self.samples.lock().unwrap().clear();
+        self.samples
+            .lock()
+            .expect("audio recorder mutex poisoned")
+            .clear();
     }
 
     pub fn save_wav(&self, path: impl AsRef<Path>) -> crate::Result<()> {
-        let samples = self.samples.lock().unwrap();
+        let samples = self.samples.lock().expect("audio recorder mutex poisoned");
         let spec = WavSpec {
             channels: 1,
             sample_rate: SAMPLE_RATE,
@@ -45,23 +57,22 @@ impl AudioRecorder {
             sample_format: hound::SampleFormat::Int,
         };
 
-        let file = std::fs::File::create(path.as_ref()).map_err(|e| {
-            crate::AudioError::StreamError(format!("failed to create file: {}", e))
-        })?;
+        let file = std::fs::File::create(path.as_ref())
+            .map_err(|e| crate::AudioError::StreamError(format!("failed to create file: {e}")))?;
         let mut writer = WavWriter::new(BufWriter::new(file), spec).map_err(|e| {
-            crate::AudioError::StreamError(format!("failed to create wav writer: {}", e))
+            crate::AudioError::StreamError(format!("failed to create wav writer: {e}"))
         })?;
 
         for &sample in samples.iter() {
             let int_sample = (sample * 32767.0).clamp(-32768.0, 32767.0) as i16;
             writer.write_sample(int_sample).map_err(|e| {
-                crate::AudioError::StreamError(format!("failed to write sample: {}", e))
+                crate::AudioError::StreamError(format!("failed to write sample: {e}"))
             })?;
         }
 
-        writer.finalize().map_err(|e| {
-            crate::AudioError::StreamError(format!("failed to finalize wav: {}", e))
-        })?;
+        writer
+            .finalize()
+            .map_err(|e| crate::AudioError::StreamError(format!("failed to finalize wav: {e}")))?;
 
         Ok(())
     }

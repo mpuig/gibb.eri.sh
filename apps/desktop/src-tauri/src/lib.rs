@@ -1,13 +1,19 @@
-#[cfg(debug_assertions)]
+use std::sync::{Arc, Mutex};
+
+use gibberish_bus::{AudioBus, AudioBusConfig, PipelineStatus};
 use tauri::Manager;
 use tracing_subscriber::EnvFilter;
+
+/// Type alias for the shared pipeline status.
+/// Using Arc allows lock-free atomic updates from the audio processing thread.
+pub type SharedPipelineStatus = Arc<PipelineStatus>;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info,gibberish=debug"))
+                .unwrap_or_else(|_| EnvFilter::new("info,gibberish=debug")),
         )
         .init();
 
@@ -22,10 +28,30 @@ pub fn run() {
         .plugin(tauri_plugin_gibberish_detect::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .setup(|_app| {
+        .setup(|app| {
+            // Create the audio bus for real-time audio streaming.
+            let config = AudioBusConfig {
+                capacity_ms: 1500, // 1.5s buffer
+                chunk_size_ms: 50, // 50ms chunks
+            };
+            let mut bus = AudioBus::with_config(config);
+
+            // Manage the sender (cloneable, recorder uses this).
+            app.manage(bus.sender());
+
+            // Manage the receiver wrapped in Arc<Mutex<Option<...>>> for restartability.
+            // The listener task returns the receiver here when it stops, enabling reuse.
+            app.manage(Arc::new(Mutex::new(bus.take_receiver())));
+
+            // Manage pipeline status as Arc for lock-free atomic updates.
+            // The audio listener thread shares this Arc and updates metrics atomically.
+            app.manage(Arc::new(PipelineStatus::default()));
+
+            tracing::info!("Audio bus initialized");
+
             #[cfg(debug_assertions)]
             {
-                let window = _app.get_webview_window("main").unwrap();
+                let window = app.get_webview_window("main").unwrap();
                 window.open_devtools();
             }
             Ok(())

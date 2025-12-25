@@ -1,5 +1,6 @@
 use ort::session::builder::GraphOptimizationLevel;
 use ort::session::Session;
+use ort::value::ValueType;
 use ort::value::{DynTensor, DynTensorValueType, DynValue, Tensor};
 use std::path::Path;
 use std::sync::Mutex;
@@ -40,6 +41,7 @@ pub struct FunctionGemmaRunner {
     past_input_names: Vec<String>,
     present_output_names: Vec<String>,
     empty_past_specs: Vec<Option<EmptyPastSpec>>,
+    banned_token_ids: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -54,59 +56,6 @@ struct EmptyPastSpec {
     shape: Vec<i64>,
 }
 
-fn parse_shape_and_symbols_from_valuetype_debug(s: &str) -> (Option<Vec<i64>>, Option<Vec<String>>) {
-    // Example:
-    // Tensor { ty: Float16, shape: Shape { inner: [-1, 1, -1, 64] }, dimension_symbols: SymbolicDimensions(["batch", "kv_heads", "past_sequence_length", "head_dim"]) }
-    let shape = s
-        .split("shape: Shape { inner: [")
-        .nth(1)
-        .and_then(|rest| rest.split(']').next())
-        .map(|inner| {
-            inner
-                .split(',')
-                .filter_map(|p| {
-                    let p = p.trim();
-                    if p.is_empty() {
-                        None
-                    } else {
-                        p.parse::<i64>().ok()
-                    }
-                })
-                .collect::<Vec<_>>()
-        })
-        .filter(|v| !v.is_empty());
-
-    let symbols = s
-        .split("dimension_symbols: SymbolicDimensions([")
-        .nth(1)
-        .and_then(|rest| rest.split("])").next())
-        .map(|inner| {
-            // Parse quoted strings.
-            let mut out = Vec::new();
-            let mut cur = String::new();
-            let mut in_str = false;
-            for ch in inner.chars() {
-                if ch == '"' {
-                    if in_str {
-                        out.push(cur.clone());
-                        cur.clear();
-                        in_str = false;
-                    } else {
-                        in_str = true;
-                    }
-                    continue;
-                }
-                if in_str {
-                    cur.push(ch);
-                }
-            }
-            out
-        })
-        .filter(|v| !v.is_empty());
-
-    (shape, symbols)
-}
-
 fn guess_past_seq_dim(dims: &[i64], symbols: Option<&[String]>) -> usize {
     if let Some(symbols) = symbols {
         for (i, sym) in symbols.iter().enumerate() {
@@ -116,26 +65,39 @@ fn guess_past_seq_dim(dims: &[i64], symbols: Option<&[String]>) -> usize {
             }
         }
     }
-    if dims.len() >= 3 {
-        2
-    } else {
-        dims.len().saturating_sub(1)
-    }
+    // Heuristic: sequence/past length is usually the last dynamic dimension (-1).
+    dims.iter()
+        .enumerate()
+        .rev()
+        .find(|(_, d)| **d < 0)
+        .map(|(i, _)| i)
+        .unwrap_or_else(|| dims.len().saturating_sub(1))
 }
 
-fn build_empty_past_spec(input_type_debug: &str) -> Option<EmptyPastSpec> {
-    let elem = if input_type_debug.contains("ty: Float16") {
-        PastElemType::F16
-    } else if input_type_debug.contains("ty: Float32") {
-        PastElemType::F32
-    } else {
-        // Unknown element type (e.g. BF16); bail out and use initializer.
+fn build_empty_past_spec(value_type: &ValueType) -> Option<EmptyPastSpec> {
+    let ValueType::Tensor {
+        ty,
+        shape,
+        dimension_symbols,
+    } = value_type
+    else {
         return None;
     };
 
-    let (shape_opt, symbols_opt) = parse_shape_and_symbols_from_valuetype_debug(input_type_debug);
-    let mut dims = shape_opt?;
-    let seq_dim = guess_past_seq_dim(&dims, symbols_opt.as_deref());
+    let elem = match ty {
+        ort::tensor::TensorElementType::Float16 => PastElemType::F16,
+        ort::tensor::TensorElementType::Float32 => PastElemType::F32,
+        _ => return None,
+    };
+
+    let mut dims: Vec<i64> = shape.iter().copied().collect();
+    let symbols: &[String] = dimension_symbols.as_ref();
+    let symbols_opt: Option<&[String]> = if symbols.is_empty() {
+        None
+    } else {
+        Some(symbols)
+    };
+    let seq_dim = guess_past_seq_dim(&dims, symbols_opt);
 
     for d in dims.iter_mut() {
         if *d < 0 {
@@ -143,14 +105,21 @@ fn build_empty_past_spec(input_type_debug: &str) -> Option<EmptyPastSpec> {
         }
     }
     if seq_dim < dims.len() {
-        dims[seq_dim] = 0;
+        // `ort::value::Tensor::from_array` rejects zero-sized dimensions. Many KV-cache ONNX exports
+        // accept a "past_seq_len = 0" tensor, but we can't construct one via `from_array` here.
+        // Instead, we prime the cache with a single masked timestep; callers must ensure the
+        // corresponding attention mask position is 0 so it is never attended to.
+        dims[seq_dim] = 1;
     }
 
     Some(EmptyPastSpec { elem, shape: dims })
 }
 
 impl FunctionGemmaRunner {
-    pub fn load(model_path: impl AsRef<Path>, tokenizer_path: impl AsRef<Path>) -> Result<Self, FunctionGemmaError> {
+    pub fn load(
+        model_path: impl AsRef<Path>,
+        tokenizer_path: impl AsRef<Path>,
+    ) -> Result<Self, FunctionGemmaError> {
         let tokenizer = Tokenizer::from_file(tokenizer_path.as_ref())
             .map_err(|e| FunctionGemmaError::Tokenizer(e.to_string()))?;
 
@@ -161,8 +130,16 @@ impl FunctionGemmaRunner {
             .commit_from_file(model_path.as_ref())
             .map_err(|e| FunctionGemmaError::Model(e.to_string()))?;
 
-        let input_names = session.inputs.iter().map(|i| i.name.clone()).collect::<Vec<_>>();
-        let output_names = session.outputs.iter().map(|o| o.name.clone()).collect::<Vec<_>>();
+        let input_names = session
+            .inputs
+            .iter()
+            .map(|i| i.name.clone())
+            .collect::<Vec<_>>();
+        let output_names = session
+            .outputs
+            .iter()
+            .map(|o| o.name.clone())
+            .collect::<Vec<_>>();
         let output_name = output_names
             .iter()
             .find(|n| n.as_str() == "logits")
@@ -177,13 +154,19 @@ impl FunctionGemmaRunner {
             if input.name.starts_with("past_key_values.") {
                 past_input_names.push(input.name.clone());
                 present_output_names.push(input.name.replacen("past_key_values", "present", 1));
-                let dbg = format!("{:?}", input.input_type);
-                let spec = build_empty_past_spec(&dbg);
+                let spec = build_empty_past_spec(&input.input_type);
                 if spec.is_none() {
                     tracing::warn!(
                         past_input = %input.name,
-                        input_type = %dbg,
+                        input_type = ?input.input_type,
                         "FunctionGemma: unable to infer past KV empty shape; inference may fail"
+                    );
+                } else if empty_past_specs.len() < 4 {
+                    tracing::debug!(
+                        past_input = %input.name,
+                        inferred_empty_shape = ?spec.as_ref().unwrap().shape,
+                        input_type = ?input.input_type,
+                        "FunctionGemma: inferred empty past KV"
                     );
                 }
                 empty_past_specs.push(spec);
@@ -198,6 +181,22 @@ impl FunctionGemmaRunner {
             "FunctionGemma model loaded"
         );
 
+        // We want the model to emit `<start_function_call>...<end_function_call>`, but discourage it
+        // from generating new turns or tool definitions/results.
+        let banned_tokens = [
+            "<start_function_declaration>",
+            "<end_function_declaration>",
+            "<start_function_response>",
+            "<end_function_response>",
+            "<start_of_turn>",
+        ];
+        let mut banned_token_ids = Vec::new();
+        for t in banned_tokens {
+            if let Some(id) = tokenizer.token_to_id(t) {
+                banned_token_ids.push(id);
+            }
+        }
+
         Ok(Self {
             session: Mutex::new(session),
             tokenizer,
@@ -206,87 +205,81 @@ impl FunctionGemmaRunner {
             past_input_names,
             present_output_names,
             empty_past_specs,
+            banned_token_ids,
         })
     }
 
-    fn build_prompt(tool_manifest: &str, committed_text: &str) -> String {
+    fn build_prompt(developer_context: &str, committed_text: &str) -> String {
+        // Follow the official FunctionGemma formatting:
+        // - a developer turn that contains the trigger phrase + function declarations (+ optional policy text)
+        // - a user turn with the request
+        // - the model emits `<start_function_call>call:...{...}<end_function_call>` when appropriate
         format!(
-            r#"You are an assistant that decides whether to call a tool.
-Return ONLY valid JSON. No extra text.
-
-Tool manifest (JSON schema for args):
-{tool_manifest}
-
-Given this new transcript chunk, propose at most 1 tool call if helpful.
-Transcript: "{committed_text}"
-
-Output JSON format:
-{{
-  "proposals": [
-    {{
-      "tool": "tool_name",
-      "args": {{}},
-      "confidence": 0.0,
-      "evidence": "short quote from transcript"
-    }}
-  ]
-}}
-"#
+            "<start_of_turn>developer\n\
+{developer_context}<end_of_turn>\n\
+<start_of_turn>user\n\
+{committed_text}<end_of_turn>\n\
+<start_of_turn>model\n"
         )
     }
 
-    fn extract_json(raw: &str) -> Option<&str> {
-        let start = raw.find('{')?;
-        let end = raw.rfind('}')?;
-        if end <= start {
-            return None;
-        }
-        Some(&raw[start..=end])
+    fn build_args_prompt(developer_context: &str, tool: &str, committed_text: &str) -> String {
+        format!(
+            "<start_of_turn>developer\n\
+{developer_context}<end_of_turn>\n\
+<start_of_turn>user\n\
+Call the function {tool} with the correct arguments for this text:\n\
+{committed_text}<end_of_turn>\n\
+<start_of_turn>model\n"
+        )
     }
 
-    fn parse_output(raw_text: String) -> Result<ModelOutput, FunctionGemmaError> {
-        let json_str = Self::extract_json(&raw_text).ok_or(FunctionGemmaError::InvalidOutput)?;
-        let value: serde_json::Value =
-            serde_json::from_str(json_str).map_err(|_| FunctionGemmaError::InvalidOutput)?;
-        let proposals_val = value
-            .get("proposals")
-            .and_then(|p| p.as_array())
-            .cloned()
-            .unwrap_or_default();
+    fn build_repair_prompt(
+        developer_context: &str,
+        committed_text: &str,
+        bad_output: &str,
+    ) -> String {
+        format!(
+            "<start_of_turn>developer\n\
+{developer_context}<end_of_turn>\n\
+<start_of_turn>user\n\
+The previous model output was invalid.\n\
+\n\
+Output ONLY valid function call(s) using EXACTLY this format:\n\
+<start_function_call>call:TOOL_NAME{{arg1:<escape>value<escape>,arg2:...}}<end_function_call>\n\
+\n\
+Text:\n\
+{committed_text}\n\
+\n\
+Invalid output:\n\
+{bad_output}<end_of_turn>\n\
+<start_of_turn>model\n"
+        )
+    }
 
+    fn parse_output(raw_text: String, evidence: &str) -> ModelOutput {
         let mut proposals = Vec::new();
-        for p in proposals_val {
-            let tool = p.get("tool").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            if tool.is_empty() {
-                continue;
+        for block in crate::parser::find_function_call_blocks(&raw_text) {
+            if let Ok((tool, args)) = crate::parser::parse_functiongemma_call(block) {
+                proposals.push(Proposal {
+                    tool,
+                    args,
+                    confidence: 1.0,
+                    evidence: evidence.to_string(),
+                });
             }
-            let args = p.get("args").cloned().unwrap_or_else(|| serde_json::json!({}));
-            let confidence = p
-                .get("confidence")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0) as f32;
-            let evidence = p
-                .get("evidence")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            proposals.push(Proposal {
-                tool,
-                args,
-                confidence,
-                evidence,
-            });
         }
-
-        Ok(ModelOutput { raw_text, proposals })
+        ModelOutput {
+            raw_text,
+            proposals,
+        }
     }
 
-    /// Greedy decode for a short JSON response.
-    ///
-    /// This is intentionally minimal; if the ONNX export supports KV cache, we can optimize later.
-    pub fn infer_once(&self, tool_manifest: &str, committed_text: &str) -> Result<ModelOutput, FunctionGemmaError> {
-        let prompt = Self::build_prompt(tool_manifest, committed_text);
-
+    fn generate_text(
+        &self,
+        prompt: &str,
+        max_new_tokens: usize,
+    ) -> Result<String, FunctionGemmaError> {
         let encoding = self
             .tokenizer
             .encode(prompt, true)
@@ -310,16 +303,16 @@ Output JSON format:
         let mut generated: Vec<u32> = Vec::new();
         let mut decoded = String::new();
 
-        // Small generation budget; we just want JSON with 0..1 proposals.
-        const MAX_NEW_TOKENS: usize = 160;
-
-        // If the ONNX export exposes KV cache inputs, use them. This avoids shape mismatches with models that require past inputs.
+        // If the ONNX export exposes KV cache inputs, use them.
         let use_kv_cache = !self.past_input_names.is_empty()
             && self.past_input_names.len() == self.present_output_names.len()
             && self.empty_past_specs.len() == self.past_input_names.len()
             && self.empty_past_specs.iter().all(|s| s.is_some());
+        tracing::debug!(use_kv_cache, "FunctionGemma generate_text");
+        let past_prefix_len: usize = if use_kv_cache { 1 } else { 0 };
+        let position_offset: i64 = past_prefix_len as i64;
 
-        // Initial past: empty tensors with correct head/head_dim, past_seq_len=0.
+        // Initial past: primed tensors with correct head/head_dim and a single masked timestep.
         let mut past: Vec<DynTensor> = Vec::new();
         if use_kv_cache {
             for spec in self.empty_past_specs.iter().filter_map(|s| s.as_ref()) {
@@ -355,29 +348,35 @@ Output JSON format:
 
         let mut total_len = input_ids.len();
 
-        for step in 0..MAX_NEW_TOKENS {
+        for step in 0..max_new_tokens {
             let is_first = step == 0 || !use_kv_cache;
 
-            let (step_ids, step_positions, step_mask_len) = if is_first {
-                // First pass: feed the full prompt.
+            let (step_ids, step_positions) = if is_first {
                 (
                     input_ids.clone(),
-                    (0..total_len as i64).collect::<Vec<i64>>(),
-                    total_len,
+                    (position_offset..position_offset + total_len as i64).collect::<Vec<i64>>(),
                 )
             } else {
-                // Subsequent passes: feed only the last generated token, use cached past.
                 let last = *input_ids.last().ok_or(FunctionGemmaError::InvalidOutput)?;
-                (vec![last], vec![(total_len as i64) - 1], total_len)
+                (vec![last], vec![position_offset + (total_len as i64) - 1])
             };
+            let step_mask_len = total_len + past_prefix_len;
 
             let ids_tensor = Tensor::<i64>::from_array(([1usize, step_ids.len()], step_ids))
                 .map_err(|e| FunctionGemmaError::Inference(e.to_string()))?;
-            let mask = vec![1i64; step_mask_len];
+            let mask: Vec<i64> = if past_prefix_len == 0 {
+                attention_mask.clone()
+            } else {
+                let mut m = Vec::with_capacity(step_mask_len);
+                m.extend(std::iter::repeat_n(0i64, past_prefix_len));
+                m.extend(attention_mask.iter().copied());
+                m
+            };
             let mask_tensor = Tensor::<i64>::from_array(([1usize, mask.len()], mask))
                 .map_err(|e| FunctionGemmaError::Inference(e.to_string()))?;
-            let pos_tensor = Tensor::<i64>::from_array(([1usize, step_positions.len()], step_positions))
-                .map_err(|e| FunctionGemmaError::Inference(e.to_string()))?;
+            let pos_tensor =
+                Tensor::<i64>::from_array(([1usize, step_positions.len()], step_positions))
+                    .map_err(|e| FunctionGemmaError::Inference(e.to_string()))?;
 
             let mut inputs: Vec<(String, DynTensor)> = Vec::new();
             inputs.push(("input_ids".to_string(), ids_tensor.upcast()));
@@ -389,7 +388,6 @@ Output JSON format:
             }
 
             if use_kv_cache {
-                // Move current past tensors into inputs, then replace with present outputs.
                 let past_to_use = std::mem::take(&mut past);
                 for (name, tensor) in self
                     .past_input_names
@@ -401,40 +399,38 @@ Output JSON format:
                 }
             }
 
-            let mut session = self
-                .session
-                .lock()
-                .map_err(|_| FunctionGemmaError::Inference("model session lock poisoned".to_string()))?;
+            let mut session = self.session.lock().map_err(|_| {
+                FunctionGemmaError::Inference("model session lock poisoned".to_string())
+            })?;
 
             let mut outputs = session
                 .run(inputs)
                 .map_err(|e| FunctionGemmaError::Inference(e.to_string()))?;
 
-            let logits = outputs[self.output_name.as_str()]
+            // Take logits out of the map so we can mutably remove KV outputs without borrow conflicts.
+            let logits_value: DynValue = outputs
+                .remove(self.output_name.as_str())
+                .ok_or(FunctionGemmaError::InvalidOutput)?;
+            let logits = logits_value
                 .try_extract_array::<f32>()
                 .map_err(|e| FunctionGemmaError::Inference(e.to_string()))?;
 
-            // Extract last logits.
             let shape = logits.shape().to_vec();
             if shape.len() < 2 {
                 return Err(FunctionGemmaError::InvalidOutput);
             }
             let vocab = *shape.last().unwrap();
-            let last_logits: Vec<f32> = match shape.len() {
+            let mut last_logits: Vec<f32> = match shape.len() {
                 3 => {
                     let seq = shape[1];
                     let base = (seq - 1) * vocab;
-                    logits
-                        .as_slice()
-                        .ok_or(FunctionGemmaError::InvalidOutput)?[base..base + vocab]
+                    logits.as_slice().ok_or(FunctionGemmaError::InvalidOutput)?[base..base + vocab]
                         .to_vec()
                 }
                 2 => {
                     let seq = shape[0];
                     let base = (seq - 1) * vocab;
-                    logits
-                        .as_slice()
-                        .ok_or(FunctionGemmaError::InvalidOutput)?[base..base + vocab]
+                    logits.as_slice().ok_or(FunctionGemmaError::InvalidOutput)?[base..base + vocab]
                         .to_vec()
                 }
                 _ => {
@@ -446,7 +442,6 @@ Output JSON format:
                 }
             };
 
-            // Update past from present outputs (only when using cache).
             if use_kv_cache {
                 let mut next_past = Vec::with_capacity(self.present_output_names.len());
                 for present_name in &self.present_output_names {
@@ -462,6 +457,12 @@ Output JSON format:
             }
 
             // Greedy argmax
+            // Prevent the model from escaping into special-token loops; we want plain JSON output.
+            for id in &self.banned_token_ids {
+                if let Some(v) = last_logits.get_mut(*id as usize) {
+                    *v = f32::NEG_INFINITY;
+                }
+            }
             let mut best_id: u32 = 0;
             let mut best_val: f32 = f32::NEG_INFINITY;
             for (i, v) in last_logits.iter().enumerate() {
@@ -478,16 +479,67 @@ Output JSON format:
 
             decoded = self
                 .tokenizer
-                .decode(&generated, true)
+                .decode(&generated, false)
                 .map_err(|e| FunctionGemmaError::Tokenizer(e.to_string()))?;
 
-            if let Some(candidate) = Self::extract_json(&decoded) {
-                if serde_json::from_str::<serde_json::Value>(candidate).is_ok() {
-                    break;
-                }
+            let saw_start_call = decoded.contains("<start_function_call>");
+            if decoded.contains("<end_function_call>") {
+                break;
+            }
+            // The model sometimes emits `<end_of_turn>` prematurely. If it has already started a
+            // function-call block, keep generating until we see `<end_function_call>` (or hit the
+            // token budget) so parsing has a chance to succeed.
+            if decoded.contains("<end_of_turn>") && !saw_start_call {
+                break;
             }
         }
 
-        Self::parse_output(decoded)
+        Ok(decoded)
+    }
+
+    /// Greedy decode for a short JSON response.
+    ///
+    /// This is intentionally minimal; if the ONNX export supports KV cache, we can optimize later.
+    pub fn infer_once(
+        &self,
+        developer_context: &str,
+        committed_text: &str,
+    ) -> Result<ModelOutput, FunctionGemmaError> {
+        const MAX_NEW_TOKENS: usize = 160;
+        let prompt = Self::build_prompt(developer_context, committed_text);
+        let decoded = self.generate_text(&prompt, MAX_NEW_TOKENS)?;
+
+        let out = Self::parse_output(decoded.clone(), committed_text);
+        if !out.proposals.is_empty() {
+            return Ok(out);
+        }
+
+        // Retry once with a stricter repair prompt (still FunctionGemma-native).
+        let repair_prompt = Self::build_repair_prompt(developer_context, committed_text, &decoded);
+        let repaired = self.generate_text(&repair_prompt, 200)?;
+        let mut repaired_out = Self::parse_output(repaired.clone(), committed_text);
+        if repaired_out.proposals.is_empty() {
+            repaired_out.raw_text = format!(
+                "{}\n\n<repair>\n{}",
+                decoded.lines().take(80).collect::<Vec<_>>().join("\n"),
+                repaired.lines().take(80).collect::<Vec<_>>().join("\n")
+            );
+        }
+        Ok(repaired_out)
+    }
+
+    pub fn infer_args_object(
+        &self,
+        developer_context: &str,
+        tool: &str,
+        committed_text: &str,
+    ) -> Result<serde_json::Value, FunctionGemmaError> {
+        let prompt = Self::build_args_prompt(developer_context, tool, committed_text);
+        let decoded = self.generate_text(&prompt, 96)?;
+        if let Some(call) = crate::parser::extract_function_call_json_tagged(&decoded) {
+            let (_, args) = crate::parser::parse_functiongemma_call(call)?;
+            return Ok(args);
+        }
+        Err(FunctionGemmaError::InvalidOutput)
     }
 }

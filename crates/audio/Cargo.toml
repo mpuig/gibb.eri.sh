@@ -14,6 +14,8 @@ thiserror.workspace = true
 tracing.workspace = true
 serde.workspace = true
 ringbuf.workspace = true
+rubato = "0.16"
+crossbeam-channel.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cidre.workspace = true

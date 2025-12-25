@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-cancel-turn-download"
+description = "Enables the cancel_turn_download command without any pre-configured scope."
+commands.allow = ["cancel_turn_download"]
+
+[[permission]]
+identifier = "deny-cancel-turn-download"
+description = "Denies the cancel_turn_download command without any pre-configured scope."
+commands.deny = ["cancel_turn_download"]

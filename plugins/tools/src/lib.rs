@@ -3,13 +3,23 @@ use tauri::{Listener, Manager, Runtime};
 use tokio::sync::Mutex;
 
 mod commands;
-mod state;
-mod wikipedia;
-mod router;
+mod error;
+mod executor;
 mod functiongemma;
 mod functiongemma_download;
 mod functiongemma_models;
+mod parser;
+mod policy;
+mod registry;
+mod router;
+mod state;
+mod tool_manifest;
+mod tools;
+mod wikipedia;
 
+pub use error::{Result, ToolsError};
+
+pub use functiongemma::{FunctionGemmaRunner, ModelOutput, Proposal};
 pub use state::WikiSummaryDto;
 
 const PLUGIN_NAME: &str = "gibberish-tools";

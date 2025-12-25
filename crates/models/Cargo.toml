@@ -10,3 +10,5 @@ futures.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 dirs.workspace = true
+bzip2 = "0.5"
+tar = "0.4"

@@ -7,6 +7,17 @@ fn main() {
         "load_model",
         "unload_model",
         "get_current_model",
+        "get_language",
+        "set_language",
+        "list_turn_models",
+        "download_turn_model",
+        "cancel_turn_download",
+        "is_turn_downloading",
+        "load_turn_model",
+        "unload_turn_model",
+        "get_current_turn_model",
+        "get_turn_settings",
+        "set_turn_settings",
         "transcribe_audio",
         "transcribe_file",
         "transcribe_streaming_chunk",
@@ -18,6 +29,11 @@ fn main() {
         "delete_session",
         "update_session_title",
         "search_sessions",
+        // Audio bus listener commands
+        "stt_start_listening",
+        "stt_stop_listening",
+        "stt_is_listening",
+        "stt_get_pipeline_status",
     ])
     .build();
 }

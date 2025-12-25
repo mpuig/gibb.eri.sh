@@ -8,6 +8,8 @@ export interface ModelInfo {
   dir_name: string;
   is_downloaded: boolean;
   size_bytes: number;
+  /** Supported language codes. Empty means multilingual with auto-detect. */
+  supported_languages: string[];
 }
 
 export interface TranscriptSegment {
@@ -17,11 +19,14 @@ export interface TranscriptSegment {
   speaker: number | null;
 }
 
+export type Language = "auto" | "en" | "es" | "ca";
+
 export function useStt() {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [currentModel, setCurrentModel] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [loadingModel, setLoadingModel] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
+  const [language, setLanguageState] = useState<Language>("auto");
   const setStoreCurrentModel = useRecordingStore((state) => state.setCurrentModel);
 
   const refreshModels = useCallback(async () => {
@@ -44,6 +49,32 @@ export function useStt() {
       return null;
     }
   }, [setStoreCurrentModel]);
+
+  const getLanguage = useCallback(async () => {
+    try {
+      const lang = await invoke<string>("plugin:gibberish-stt|get_language");
+      setLanguageState(lang as Language);
+      return lang;
+    } catch (err) {
+      console.error("Failed to get language:", err);
+      return "auto";
+    }
+  }, []);
+
+  const setLanguage = useCallback(async (lang: Language) => {
+    setLoadingModel(currentModel); // Show loading state while reloading
+    try {
+      await invoke("plugin:gibberish-stt|set_language", { language: lang });
+      setLanguageState(lang);
+      // Persist to localStorage
+      localStorage.setItem("gibberish:language", lang);
+    } catch (err) {
+      console.error("Failed to set language:", err);
+      throw err;
+    } finally {
+      setLoadingModel(null);
+    }
+  }, [currentModel]);
 
   // Auto-load the last used model on startup
   const autoLoadLastModel = useCallback(async (availableModels: ModelInfo[]) => {
@@ -69,6 +100,7 @@ export function useStt() {
 
     const init = async () => {
       await refreshModels();
+      await getLanguage();
       const current = await getCurrentModel();
 
       // If no model is currently loaded, try to auto-load the last one
@@ -101,10 +133,9 @@ export function useStt() {
         unlisten();
       }
     };
-  }, [refreshModels, getCurrentModel, autoLoadLastModel]);
+  }, [refreshModels, getCurrentModel, getLanguage, autoLoadLastModel]);
 
   const downloadModel = useCallback(async (modelName: string) => {
-    setIsLoading(true);
     setDownloadProgress((prev) => ({ ...prev, [modelName]: 0 }));
     try {
       const path = await invoke<string>("plugin:gibberish-stt|download_model", {
@@ -116,7 +147,6 @@ export function useStt() {
       console.error("Failed to download model:", err);
       throw err;
     } finally {
-      setIsLoading(false);
       setDownloadProgress((prev) => {
         const { [modelName]: _, ...rest } = prev;
         return rest;
@@ -147,7 +177,7 @@ export function useStt() {
   }, []);
 
   const loadModel = useCallback(async (modelName: string) => {
-    setIsLoading(true);
+    setLoadingModel(modelName);
     try {
       await invoke("plugin:gibberish-stt|load_model", { modelName });
       setCurrentModel(modelName);
@@ -158,7 +188,7 @@ export function useStt() {
       console.error("Failed to load model:", err);
       throw err;
     } finally {
-      setIsLoading(false);
+      setLoadingModel(null);
     }
   }, [setStoreCurrentModel]);
 
@@ -211,17 +241,29 @@ export function useStt() {
     }
   }, []);
 
+  // Get the supported languages for the current model (empty = multilingual)
+  const currentModelSupportedLanguages = currentModel
+    ? models.find((m) => m.name === currentModel)?.supported_languages ?? []
+    : [];
+
+  // Multilingual if supported_languages is empty (supports all languages)
+  const isCurrentModelMultilingual = currentModelSupportedLanguages.length === 0;
+
   return {
     models,
     currentModel,
-    isLoading,
+    loadingModel,
     downloadProgress,
+    language,
+    isCurrentModelMultilingual,
+    currentModelSupportedLanguages,
     refreshModels,
     downloadModel,
     cancelDownload,
     checkIsDownloading,
     loadModel,
     unloadModel,
+    setLanguage,
     transcribeAudio,
     transcribeFile,
   };

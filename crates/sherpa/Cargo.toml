@@ -1,0 +1,12 @@
+[package]
+name = "gibberish-sherpa"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+gibberish-stt.workspace = true
+sherpa-rs-sys = { version = "0.6.8", default-features = false, features = ["download-binaries"] }
+sherpa-rs = { version = "0.6.8", default-features = false, features = ["download-binaries"] }
+eyre = "0.6"

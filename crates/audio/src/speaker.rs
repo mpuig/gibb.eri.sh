@@ -12,12 +12,12 @@ mod macos {
 
     use futures::Stream;
     use ringbuf::{
-        HeapCons, HeapProd, HeapRb,
         traits::{Consumer, Producer, Split},
+        HeapCons, HeapProd, HeapRb,
     };
 
-    use cidre::{arc, av, cat, cf, core_audio as ca, ns, os};
     use cidre::core_audio::aggregate_device_keys as agg_keys;
+    use cidre::{arc, av, cat, cf, core_audio as ca, ns, os};
 
     pub const TAP_DEVICE_NAME: &str = "gibberish-audio-tap";
     const CHUNK_SIZE: usize = 4096;
@@ -61,13 +61,19 @@ mod macos {
             let tap_desc = ca::TapDesc::with_mono_global_tap_excluding_processes(&ns::Array::new());
             let tap = tap_desc.create_process_tap().map_err(|e| {
                 tracing::error!("Failed to create audio tap: {:?}", e);
-                crate::AudioError::StreamError(format!("Failed to create audio tap: {:?}", e))
+                crate::AudioError::StreamError(format!("Failed to create audio tap: {e:?}"))
             })?;
-            tracing::info!("Audio tap created successfully, sample_rate: {}", tap.asbd().map(|a| a.sample_rate).unwrap_or(0.0));
+            tracing::info!(
+                "Audio tap created successfully, sample_rate: {}",
+                tap.asbd().map(|a| a.sample_rate).unwrap_or(0.0)
+            );
 
             let sub_tap = cf::DictionaryOf::with_keys_values(
                 &[ca::sub_device_keys::uid()],
-                &[tap.uid().unwrap().as_type_ref()],
+                &[tap
+                    .uid()
+                    .expect("audio tap uid not available")
+                    .as_type_ref()],
             );
 
             let agg_desc = cf::DictionaryOf::with_keys_values(
@@ -91,7 +97,10 @@ mod macos {
         }
 
         pub fn sample_rate(&self) -> u32 {
-            self.tap.asbd().unwrap().sample_rate as u32
+            self.tap
+                .asbd()
+                .expect("audio tap asbd not available")
+                .sample_rate as u32
         }
 
         fn start_device(
@@ -107,7 +116,8 @@ mod macos {
                 _output_time: &cat::AudioTimeStamp,
                 ctx: Option<&mut Ctx>,
             ) -> os::Status {
-                static PROC_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                static PROC_COUNTER: std::sync::atomic::AtomicU64 =
+                    std::sync::atomic::AtomicU64::new(0);
                 let proc_count = PROC_COUNTER.fetch_add(1, Ordering::Relaxed);
 
                 if proc_count == 0 {
@@ -117,7 +127,7 @@ mod macos {
                     tracing::info!(count = proc_count, "speaker_proc: callback count");
                 }
 
-                let ctx = ctx.unwrap();
+                let ctx = ctx.expect("audio proc context must be provided");
 
                 let after = device
                     .nominal_sample_rate()
@@ -144,7 +154,10 @@ mod macos {
                 {
                     if let Some(data) = view.data_f32_at(0) {
                         if proc_count < 5 {
-                            tracing::info!(samples = data.len(), "speaker_proc: got f32 data via view");
+                            tracing::info!(
+                                samples = data.len(),
+                                "speaker_proc: got f32 data via view"
+                            );
                         }
                         process_audio_data(ctx, data);
                     } else if proc_count < 5 {
@@ -200,17 +213,17 @@ mod macos {
             tracing::info!("speaker: creating aggregate device");
             let agg_device = ca::AggregateDevice::with_desc(&self.agg_desc).map_err(|e| {
                 tracing::error!("speaker: failed to create aggregate device: {:?}", e);
-                crate::AudioError::StreamError(format!("Failed to create aggregate device: {:?}", e))
+                crate::AudioError::StreamError(format!("Failed to create aggregate device: {e:?}"))
             })?;
             tracing::info!("speaker: aggregate device created, creating IO proc");
             let proc_id = agg_device.create_io_proc_id(proc, Some(ctx)).map_err(|e| {
                 tracing::error!("speaker: failed to create IO proc: {:?}", e);
-                crate::AudioError::StreamError(format!("Failed to create IO proc: {:?}", e))
+                crate::AudioError::StreamError(format!("Failed to create IO proc: {e:?}"))
             })?;
             tracing::info!("speaker: IO proc created, starting device");
             let started_device = ca::device_start(agg_device, Some(proc_id)).map_err(|e| {
                 tracing::error!("speaker: failed to start device: {:?}", e);
-                crate::AudioError::StreamError(format!("Failed to start device: {:?}", e))
+                crate::AudioError::StreamError(format!("Failed to start device: {e:?}"))
             })?;
             tracing::info!("speaker: device started successfully");
 
@@ -221,10 +234,14 @@ mod macos {
             tracing::info!("Starting speaker stream");
             let asbd = self.tap.asbd().map_err(|e| {
                 tracing::error!("Failed to get ASBD: {:?}", e);
-                crate::AudioError::StreamError(format!("Failed to get ASBD: {:?}", e))
+                crate::AudioError::StreamError(format!("Failed to get ASBD: {e:?}"))
             })?;
-            tracing::info!("ASBD: sample_rate={}, channels={}, format={:?}",
-                asbd.sample_rate, asbd.channels_per_frame, asbd.format);
+            tracing::info!(
+                "ASBD: sample_rate={}, channels={}, format={:?}",
+                asbd.sample_rate,
+                asbd.channels_per_frame,
+                asbd.format
+            );
 
             let format = av::AudioFormat::with_asbd(&asbd).ok_or_else(|| {
                 crate::AudioError::StreamError("Failed to create audio format".to_string())
@@ -310,7 +327,11 @@ mod macos {
         static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let count = COUNTER.fetch_add(1, Ordering::Relaxed);
         if count % 100 == 0 {
-            tracing::debug!("process_audio_data: received {} samples (call #{})", data.len(), count);
+            tracing::debug!(
+                "process_audio_data: received {} samples (call #{})",
+                data.len(),
+                count
+            );
         }
 
         let pushed = ctx.producer.push_slice(data);
@@ -322,7 +343,10 @@ mod macos {
 
         if pushed > 0 {
             let should_wake = {
-                let mut waker_state = ctx.waker_state.lock().unwrap();
+                let mut waker_state = ctx
+                    .waker_state
+                    .lock()
+                    .expect("speaker waker state mutex poisoned");
                 let had_waker = waker_state.waker.is_some();
                 let was_has_data = waker_state.has_data;
 
@@ -366,14 +390,19 @@ mod macos {
             mut self: std::pin::Pin<&mut Self>,
             cx: &mut std::task::Context<'_>,
         ) -> Poll<Option<Self::Item>> {
-            static POLL_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            static POLL_COUNTER: std::sync::atomic::AtomicU64 =
+                std::sync::atomic::AtomicU64::new(0);
             let poll_count = POLL_COUNTER.fetch_add(1, Ordering::Relaxed);
 
             let this = self.as_mut().get_mut();
             let popped = this.consumer.pop_slice(&mut this.read_buffer);
 
             if poll_count < 10 {
-                tracing::info!(poll_count = poll_count, popped = popped, "SpeakerStream::poll_next");
+                tracing::info!(
+                    poll_count = poll_count,
+                    popped = popped,
+                    "SpeakerStream::poll_next"
+                );
             }
 
             if popped > 0 {
@@ -381,7 +410,10 @@ mod macos {
             }
 
             {
-                let mut state = this.waker_state.lock().unwrap();
+                let mut state = this
+                    .waker_state
+                    .lock()
+                    .expect("speaker stream waker state mutex poisoned");
                 state.has_data = false;
                 state.waker = Some(cx.waker().clone());
                 if poll_count < 10 {

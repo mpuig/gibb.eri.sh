@@ -21,7 +21,7 @@ pub struct DownloadProgress {
 }
 
 fn hf_resolve_url(repo: &str, remote_path: &str) -> String {
-    format!("https://huggingface.co/{}/resolve/main/{}", repo, remote_path)
+    format!("https://huggingface.co/{repo}/resolve/main/{remote_path}")
 }
 
 async fn download_file<F>(
@@ -106,17 +106,20 @@ impl FunctionGemmaDownloadPlan {
         let repo = "onnx-community/functiongemma-270m-it-ONNX";
         let variant = variant.to_string();
 
-        let onnx_name = format!("{}.onnx", variant);
-        let data_name = format!("{}.onnx_data", variant);
+        let onnx_name = format!("{variant}.onnx");
+        let data_name = format!("{variant}.onnx_data");
 
         Self {
             repo,
             files: vec![
                 // ONNX model + external data (required for these repos).
-                (format!("onnx/{}", onnx_name), base_dir.join(&onnx_name)),
-                (format!("onnx/{}", data_name), base_dir.join(&data_name)),
+                (format!("onnx/{onnx_name}"), base_dir.join(&onnx_name)),
+                (format!("onnx/{data_name}"), base_dir.join(&data_name)),
                 // Tokenizer (must be tokenizers JSON).
-                ("tokenizer.json".to_string(), base_dir.join("tokenizer.json")),
+                (
+                    "tokenizer.json".to_string(),
+                    base_dir.join("tokenizer.json"),
+                ),
             ],
         }
     }
@@ -156,7 +159,9 @@ where
                 known_totals.entry(file_label.clone()).or_insert(t);
             }
 
-            let total = known_totals.values().fold(0u64, |acc, v| acc.saturating_add(*v));
+            let total = known_totals
+                .values()
+                .fold(0u64, |acc, v| acc.saturating_add(*v));
             let downloaded = downloaded_total.saturating_add(d);
             on_progress(DownloadProgress {
                 downloaded_bytes: downloaded,
@@ -173,7 +178,9 @@ where
             known_totals.entry(file_label.clone()).or_insert(file_total);
         }
 
-        let total = known_totals.values().fold(0u64, |acc, v| acc.saturating_add(*v));
+        let total = known_totals
+            .values()
+            .fold(0u64, |acc, v| acc.saturating_add(*v));
         on_progress(DownloadProgress {
             downloaded_bytes: downloaded_total,
             total_bytes: total,

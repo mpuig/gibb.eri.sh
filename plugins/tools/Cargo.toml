@@ -22,3 +22,4 @@ chrono.workspace = true
 futures.workspace = true
 tokio-util = "0.7"
 half = "2"
+async-trait = "0.1"

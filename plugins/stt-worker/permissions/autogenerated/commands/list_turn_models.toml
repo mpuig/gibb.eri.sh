@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-list-turn-models"
+description = "Enables the list_turn_models command without any pre-configured scope."
+commands.allow = ["list_turn_models"]
+
+[[permission]]
+identifier = "deny-list-turn-models"
+description = "Denies the list_turn_models command without any pre-configured scope."
+commands.deny = ["list_turn_models"]

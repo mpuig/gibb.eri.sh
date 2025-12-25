@@ -16,3 +16,5 @@ tracing.workspace = true
 tokio.workspace = true
 chrono.workspace = true
 gibberish-audio.workspace = true
+gibberish-bus.workspace = true
+crossbeam-channel.workspace = true

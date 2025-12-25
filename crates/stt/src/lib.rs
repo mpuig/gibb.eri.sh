@@ -1,6 +1,9 @@
 mod engine;
 
-pub use engine::{SttEngine, Segment, Word};
+pub use engine::{
+    EngineLoader, Segment, SttEngine, Word, SILENCE_INJECTION_MS, SILENCE_INJECTION_SAMPLES,
+    STT_SAMPLE_RATE,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum SttError {

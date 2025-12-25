@@ -42,9 +42,7 @@ fn detect_device_type(name: &str) -> DeviceType {
 pub fn list_devices() -> crate::Result<Vec<AudioDevice>> {
     let host = cpal::default_host();
     let default_device = host.default_input_device();
-    let default_name = default_device
-        .as_ref()
-        .and_then(|d| d.name().ok());
+    let default_name = default_device.as_ref().and_then(|d| d.name().ok());
 
     let mut devices = Vec::new();
     for device in host.input_devices()? {

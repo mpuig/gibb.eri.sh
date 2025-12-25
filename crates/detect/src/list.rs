@@ -14,10 +14,7 @@ mod macos {
     pub fn list_installed_apps() -> Vec<InstalledApp> {
         let app_dirs = [
             "/Applications".to_string(),
-            format!(
-                "{}/Applications",
-                std::env::var("HOME").unwrap_or_default()
-            ),
+            format!("{}/Applications", std::env::var("HOME").unwrap_or_default()),
         ];
 
         let mut apps = Vec::new();

@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-is-turn-downloading"
+description = "Enables the is_turn_downloading command without any pre-configured scope."
+commands.allow = ["is_turn_downloading"]
+
+[[permission]]
+identifier = "deny-is-turn-downloading"
+description = "Denies the is_turn_downloading command without any pre-configured scope."
+commands.deny = ["is_turn_downloading"]

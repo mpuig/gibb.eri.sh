@@ -17,20 +17,20 @@ fn main() {
     let model_dir = &args[1];
     let audio_file = &args[2];
 
-    println!("Loading Parakeet model from: {}", model_dir);
+    println!("Loading Parakeet model from: {model_dir}");
     let engine = match ParakeetEngine::new(model_dir) {
         Ok(e) => e,
         Err(e) => {
-            eprintln!("Failed to load model: {}", e);
+            eprintln!("Failed to load model: {e}");
             std::process::exit(1);
         }
     };
 
-    println!("Transcribing: {}", audio_file);
+    println!("Transcribing: {audio_file}");
     let result = match engine.transcribe_file(audio_file) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Transcription failed: {}", e);
+            eprintln!("Transcription failed: {e}");
             std::process::exit(1);
         }
     };
@@ -41,10 +41,7 @@ fn main() {
     if !result.tokens.is_empty() {
         println!("\n=== Word Timestamps ===");
         for token in &result.tokens {
-            println!(
-                "[{:.2}s - {:.2}s] {}",
-                token.start, token.end, token.text
-            );
+            println!("[{:.2}s - {:.2}s] {}", token.start, token.end, token.text);
         }
     }
 }

@@ -307,6 +307,18 @@
           "markdownDescription": "Denies the cancel_download command without any pre-configured scope."
         },
         {
+          "description": "Enables the cancel_turn_download command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-cancel-turn-download",
+          "markdownDescription": "Enables the cancel_turn_download command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the cancel_turn_download command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-cancel-turn-download",
+          "markdownDescription": "Denies the cancel_turn_download command without any pre-configured scope."
+        },
+        {
           "description": "Enables the delete_session command without any pre-configured scope.",
           "type": "string",
           "const": "allow-delete-session",
@@ -331,6 +343,18 @@
           "markdownDescription": "Denies the download_model command without any pre-configured scope."
         },
         {
+          "description": "Enables the download_turn_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-download-turn-model",
+          "markdownDescription": "Enables the download_turn_model command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the download_turn_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-download-turn-model",
+          "markdownDescription": "Denies the download_turn_model command without any pre-configured scope."
+        },
+        {
           "description": "Enables the get_current_model command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-current-model",
@@ -341,6 +365,30 @@
           "type": "string",
           "const": "deny-get-current-model",
           "markdownDescription": "Denies the get_current_model command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_current_turn_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-current-turn-model",
+          "markdownDescription": "Enables the get_current_turn_model command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_current_turn_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-current-turn-model",
+          "markdownDescription": "Denies the get_current_turn_model command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_language command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-language",
+          "markdownDescription": "Enables the get_language command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_language command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-language",
+          "markdownDescription": "Denies the get_language command without any pre-configured scope."
         },
         {
           "description": "Enables the get_session command without any pre-configured scope.",
@@ -367,6 +415,18 @@
           "markdownDescription": "Denies the get_streaming_buffer_duration command without any pre-configured scope."
         },
         {
+          "description": "Enables the get_turn_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-turn-settings",
+          "markdownDescription": "Enables the get_turn_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_turn_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-turn-settings",
+          "markdownDescription": "Denies the get_turn_settings command without any pre-configured scope."
+        },
+        {
           "description": "Enables the is_downloading command without any pre-configured scope.",
           "type": "string",
           "const": "allow-is-downloading",
@@ -377,6 +437,18 @@
           "type": "string",
           "const": "deny-is-downloading",
           "markdownDescription": "Denies the is_downloading command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the is_turn_downloading command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-is-turn-downloading",
+          "markdownDescription": "Enables the is_turn_downloading command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the is_turn_downloading command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-is-turn-downloading",
+          "markdownDescription": "Denies the is_turn_downloading command without any pre-configured scope."
         },
         {
           "description": "Enables the list_models command without any pre-configured scope.",
@@ -403,6 +475,18 @@
           "markdownDescription": "Denies the list_sessions command without any pre-configured scope."
         },
         {
+          "description": "Enables the list_turn_models command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-list-turn-models",
+          "markdownDescription": "Enables the list_turn_models command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the list_turn_models command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-list-turn-models",
+          "markdownDescription": "Denies the list_turn_models command without any pre-configured scope."
+        },
+        {
           "description": "Enables the load_model command without any pre-configured scope.",
           "type": "string",
           "const": "allow-load-model",
@@ -413,6 +497,18 @@
           "type": "string",
           "const": "deny-load-model",
           "markdownDescription": "Denies the load_model command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the load_turn_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-load-turn-model",
+          "markdownDescription": "Enables the load_turn_model command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the load_turn_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-load-turn-model",
+          "markdownDescription": "Denies the load_turn_model command without any pre-configured scope."
         },
         {
           "description": "Enables the reset_streaming_buffer command without any pre-configured scope.",
@@ -449,6 +545,78 @@
           "type": "string",
           "const": "deny-search-sessions",
           "markdownDescription": "Denies the search_sessions command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_language command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-language",
+          "markdownDescription": "Enables the set_language command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_language command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-language",
+          "markdownDescription": "Denies the set_language command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the set_turn_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-set-turn-settings",
+          "markdownDescription": "Enables the set_turn_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the set_turn_settings command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-set-turn-settings",
+          "markdownDescription": "Denies the set_turn_settings command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stt_get_pipeline_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stt-get-pipeline-status",
+          "markdownDescription": "Enables the stt_get_pipeline_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stt_get_pipeline_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stt-get-pipeline-status",
+          "markdownDescription": "Denies the stt_get_pipeline_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stt_is_listening command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stt-is-listening",
+          "markdownDescription": "Enables the stt_is_listening command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stt_is_listening command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stt-is-listening",
+          "markdownDescription": "Denies the stt_is_listening command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stt_start_listening command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stt-start-listening",
+          "markdownDescription": "Enables the stt_start_listening command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stt_start_listening command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stt-start-listening",
+          "markdownDescription": "Denies the stt_start_listening command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stt_stop_listening command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stt-stop-listening",
+          "markdownDescription": "Enables the stt_stop_listening command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stt_stop_listening command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stt-stop-listening",
+          "markdownDescription": "Denies the stt_stop_listening command without any pre-configured scope."
         },
         {
           "description": "Enables the transcribe_audio command without any pre-configured scope.",
@@ -497,6 +665,18 @@
           "type": "string",
           "const": "deny-unload-model",
           "markdownDescription": "Denies the unload_model command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the unload_turn_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-unload-turn-model",
+          "markdownDescription": "Enables the unload_turn_model command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the unload_turn_model command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-unload-turn-model",
+          "markdownDescription": "Denies the unload_turn_model command without any pre-configured scope."
         },
         {
           "description": "Enables the update_session_title command without any pre-configured scope.",

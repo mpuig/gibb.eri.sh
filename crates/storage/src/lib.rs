@@ -1,6 +1,6 @@
 use gibberish_transcript::{Transcript, TranscriptRepository};
 use rusqlite::Connection;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Mutex;
 use uuid::Uuid;
 
@@ -21,7 +21,7 @@ pub struct Database {
 }
 
 impl Database {
-    pub fn open(path: &PathBuf) -> Result<Self> {
+    pub fn open(path: &Path) -> Result<Self> {
         let conn = Connection::open(path)?;
         let db = Self {
             conn: Mutex::new(conn),
@@ -40,7 +40,7 @@ impl Database {
     }
 
     fn init_schema(&self) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().expect("database mutex poisoned");
         conn.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS sessions (
@@ -70,7 +70,7 @@ impl TranscriptRepository for Database {
 
     fn save(&self, transcript: &Transcript) -> Result<()> {
         let json = serde_json::to_string(transcript)?;
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().expect("database mutex poisoned");
         conn.execute(
             "INSERT OR REPLACE INTO sessions (id, title, created_at, updated_at, duration_ms, transcript_json) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             (
@@ -86,7 +86,7 @@ impl TranscriptRepository for Database {
     }
 
     fn get(&self, id: &Uuid) -> Result<Transcript> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().expect("database mutex poisoned");
         let json: String = conn
             .query_row(
                 "SELECT transcript_json FROM sessions WHERE id = ?1",
@@ -95,7 +95,7 @@ impl TranscriptRepository for Database {
             )
             .map_err(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => {
-                    StorageError::NotFound(format!("transcript {}", id))
+                    StorageError::NotFound(format!("transcript {id}"))
                 }
                 other => StorageError::DatabaseError(other),
             })?;
@@ -103,7 +103,7 @@ impl TranscriptRepository for Database {
     }
 
     fn list(&self) -> Result<Vec<Transcript>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().expect("database mutex poisoned");
         let mut stmt =
             conn.prepare("SELECT transcript_json FROM sessions ORDER BY created_at DESC")?;
         let rows = stmt.query_map([], |row| {
@@ -122,10 +122,10 @@ impl TranscriptRepository for Database {
     }
 
     fn delete(&self, id: &Uuid) -> Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = self.conn.lock().expect("database mutex poisoned");
         let affected = conn.execute("DELETE FROM sessions WHERE id = ?1", [id.to_string()])?;
         if affected == 0 {
-            return Err(StorageError::NotFound(format!("transcript {}", id)));
+            return Err(StorageError::NotFound(format!("transcript {id}")));
         }
         Ok(())
     }

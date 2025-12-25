@@ -1,7 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, SampleFormat, Stream};
+use crossbeam_channel::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use tokio::sync::broadcast;
 
 #[cfg(target_os = "macos")]
 use crate::speaker::SpeakerInput;
@@ -10,10 +10,27 @@ use futures::StreamExt;
 
 const TARGET_SAMPLE_RATE: u32 = 16000;
 
+/// Minimum samples needed before mixing (10ms at 16kHz)
+const MIXER_MIN_SAMPLES: usize = 160;
+
+/// Fallback threshold for single-channel audio (100ms at 16kHz)
+const MIXER_FALLBACK_SAMPLES: usize = 1600;
+
+/// Time to wait before falling back to single-channel when one source stops producing.
+/// Reduced from 200ms to 50ms for lower latency.
+const MIXER_FALLBACK_TIMEOUT_MS: u128 = 50;
+
+/// Timeout for checking if speaker stream should exit
+const SPEAKER_POLL_TIMEOUT_MS: u64 = 500;
+
 #[derive(Debug, Clone)]
 pub enum AudioSource {
-    Microphone { device_id: Option<String> },
-    SystemAudio { device_id: Option<String> },
+    Microphone {
+        device_id: Option<String>,
+    },
+    SystemAudio {
+        device_id: Option<String>,
+    },
     Combined {
         mic_device_id: Option<String>,
         system_device_id: Option<String>,
@@ -23,19 +40,24 @@ pub enum AudioSource {
     SystemAudioNative,
     /// Combined microphone + Core Audio Tap system audio
     #[cfg(target_os = "macos")]
-    CombinedNative { mic_device_id: Option<String> },
+    CombinedNative {
+        mic_device_id: Option<String>,
+    },
 }
 
 pub struct AudioStream {
     _streams: Vec<Stream>,
     #[cfg(target_os = "macos")]
     _speaker_handle: Option<std::thread::JoinHandle<()>>,
-    receiver: Option<broadcast::Receiver<Vec<f32>>>,
+    receiver: Option<Receiver<Vec<f32>>>,
 }
 
 impl AudioStream {
-    /// Take the receiver out of this AudioStream (can only be called once)
-    pub fn take_receiver(&mut self) -> Option<broadcast::Receiver<Vec<f32>>> {
+    /// Take the receiver out of this AudioStream (can only be called once).
+    ///
+    /// The receiver supports blocking `recv()` and `recv_timeout()` for
+    /// efficient single-consumer use without polling.
+    pub fn take_receiver(&mut self) -> Option<Receiver<Vec<f32>>> {
         self.receiver.take()
     }
 }
@@ -68,7 +90,7 @@ impl AudioStream {
         match source {
             AudioSource::Microphone { device_id } => {
                 let device = get_device(&host, device_id.as_deref(), false)?;
-                let (tx, rx) = broadcast::channel::<Vec<f32>>(100);
+                let (tx, rx) = crossbeam_channel::unbounded::<Vec<f32>>();
                 let stream = build_stream(device, tx)?;
                 Ok(Self {
                     _streams: vec![stream],
@@ -79,7 +101,7 @@ impl AudioStream {
             }
             AudioSource::SystemAudio { device_id } => {
                 let device = get_device(&host, device_id.as_deref(), true)?;
-                let (tx, rx) = broadcast::channel::<Vec<f32>>(100);
+                let (tx, rx) = crossbeam_channel::unbounded::<Vec<f32>>();
                 let stream = build_stream(device, tx)?;
                 Ok(Self {
                     _streams: vec![stream],
@@ -95,7 +117,7 @@ impl AudioStream {
                 let mic_device = get_device(&host, mic_device_id.as_deref(), false)?;
                 let system_device = get_device(&host, system_device_id.as_deref(), true)?;
 
-                let (tx, rx) = broadcast::channel::<Vec<f32>>(100);
+                let (tx, rx) = crossbeam_channel::unbounded::<Vec<f32>>();
                 let mixer = AudioMixer::new(tx);
 
                 let mic_stream = build_stream_with_mixer(mic_device, mixer.clone(), 0)?;
@@ -113,37 +135,50 @@ impl AudioStream {
                 tracing::info!("AudioStream: Creating SystemAudioNative source");
                 let speaker_input = SpeakerInput::new()?;
                 let source_sample_rate = speaker_input.sample_rate();
-                tracing::info!(sample_rate = source_sample_rate, "AudioStream: SpeakerInput created");
+                tracing::info!(
+                    sample_rate = source_sample_rate,
+                    "AudioStream: SpeakerInput created"
+                );
                 let mut speaker_stream = speaker_input.stream()?;
                 tracing::info!("AudioStream: SpeakerStream created, starting poll thread");
 
-                let (tx, rx) = broadcast::channel::<Vec<f32>>(100);
+                let (tx, rx) = crossbeam_channel::unbounded::<Vec<f32>>();
 
                 let handle = std::thread::spawn(move || {
                     tracing::info!("AudioStream: Speaker poll thread started");
                     let rt = tokio::runtime::Builder::new_current_thread()
                         .enable_all()
                         .build()
-                        .unwrap();
+                        .expect("failed to create tokio runtime for speaker thread");
 
                     rt.block_on(async {
                         let mut sample_count = 0u64;
                         let mut send_count = 0u64;
+                        let mut agc = AgcState::default();
+                        let mut resampler =
+                            SincResampler::new(source_sample_rate, TARGET_SAMPLE_RATE);
                         while let Some(samples) = speaker_stream.next().await {
                             sample_count += samples.len() as u64;
                             if send_count < 5 || sample_count % 48000 == 0 {
-                                tracing::info!(total_samples = sample_count, batch_size = samples.len(), send_count, "AudioStream: received speaker samples");
+                                tracing::info!(
+                                    total_samples = sample_count,
+                                    batch_size = samples.len(),
+                                    send_count,
+                                    "AudioStream: received speaker samples"
+                                );
                             }
-                            let resampled = resample(&samples, source_sample_rate, TARGET_SAMPLE_RATE);
-                            match tx.send(resampled) {
-                                Ok(receivers) => {
+                            let mut processed =
+                                process_audio_with_resampler(&samples, 1, resampler.as_mut());
+                            agc.process(&mut processed);
+                            match tx.send(processed) {
+                                Ok(()) => {
                                     send_count += 1;
                                     if send_count <= 5 {
-                                        tracing::info!(receivers, send_count, "AudioStream: sent to broadcast");
+                                        tracing::info!(send_count, "AudioStream: sent to channel");
                                     }
                                 }
                                 Err(_) => {
-                                    tracing::info!("AudioStream: broadcast channel closed, stopping");
+                                    tracing::info!("AudioStream: channel closed, stopping");
                                     break;
                                 }
                             }
@@ -164,7 +199,7 @@ impl AudioStream {
                 let mic_device = get_device(&host, mic_device_id.as_deref(), false)?;
                 tracing::info!("CombinedNative: mic device obtained");
 
-                let (tx, rx) = broadcast::channel::<Vec<f32>>(100);
+                let (tx, rx) = crossbeam_channel::unbounded::<Vec<f32>>();
                 let mixer = AudioMixer::new(tx);
 
                 // Microphone stream via cpal
@@ -187,21 +222,24 @@ impl AudioStream {
                     let rt = tokio::runtime::Builder::new_current_thread()
                         .enable_all()
                         .build()
-                        .unwrap();
+                        .expect("failed to create tokio runtime for combined speaker thread");
 
                     rt.block_on(async {
                         use tokio::time::{timeout, Duration};
                         let mut poll_count = 0u64;
+                        let mut agc = AgcState::default();
+                        let mut resampler = SincResampler::new(source_sample_rate, TARGET_SAMPLE_RATE);
                         loop {
                             // Use timeout so we can periodically check if channel is closed
-                            match timeout(Duration::from_millis(500), speaker_stream.next()).await {
+                            match timeout(Duration::from_millis(SPEAKER_POLL_TIMEOUT_MS), speaker_stream.next()).await {
                                 Ok(Some(samples)) => {
                                     poll_count += 1;
                                     if poll_count <= 3 {
                                         tracing::info!(poll_count, samples_len = samples.len(), "CombinedNative: speaker got samples");
                                     }
-                                    let resampled = resample(&samples, source_sample_rate, TARGET_SAMPLE_RATE);
-                                    if !mixer_for_speaker.push(1, resampled) {
+                                    let mut processed = process_audio_with_resampler(&samples, 1, resampler.as_mut());
+                                    agc.process(&mut processed);
+                                    if !mixer_for_speaker.push(1, processed) {
                                         tracing::info!("CombinedNative: mixer channel closed, stopping speaker thread");
                                         break;
                                     }
@@ -234,7 +272,11 @@ impl AudioStream {
     }
 }
 
-fn get_device(host: &cpal::Host, device_id: Option<&str>, prefer_virtual: bool) -> crate::Result<Device> {
+fn get_device(
+    host: &cpal::Host,
+    device_id: Option<&str>,
+    prefer_virtual: bool,
+) -> crate::Result<Device> {
     match device_id {
         Some(id) => host
             .input_devices()?
@@ -267,79 +309,141 @@ fn get_device(host: &cpal::Host, device_id: Option<&str>, prefer_virtual: bool) 
     }
 }
 
-fn build_stream(device: Device, tx: broadcast::Sender<Vec<f32>>) -> crate::Result<Stream> {
+fn build_stream(device: Device, tx: Sender<Vec<f32>>) -> crate::Result<Stream> {
     let config = device.default_input_config().map_err(|e| {
-        crate::AudioError::StreamError(format!("failed to get default config: {}", e))
+        crate::AudioError::StreamError(format!("failed to get default config: {e}"))
     })?;
 
     let sample_rate = config.sample_rate().0;
     let channels = config.channels() as usize;
+    let agc = Arc::new(Mutex::new(AgcState::default()));
+
+    // Use sinc resampler for high-quality resampling when needed
+    let resampler = if sample_rate != TARGET_SAMPLE_RATE {
+        SincResampler::new(sample_rate, TARGET_SAMPLE_RATE).map(|r| Arc::new(Mutex::new(r)))
+    } else {
+        None
+    };
 
     let stream = match config.sample_format() {
-        SampleFormat::F32 => device.build_input_stream(
-            &config.into(),
-            move |data: &[f32], _| {
-                let mono = to_mono(data, channels);
-                let resampled = resample(&mono, sample_rate, TARGET_SAMPLE_RATE);
-                let _ = tx.send(resampled);
-            },
-            |err| tracing::error!("audio stream error: {}", err),
-            None,
-        )?,
-        SampleFormat::I16 => device.build_input_stream(
-            &config.into(),
-            move |data: &[i16], _| {
-                let float: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
-                let mono = to_mono(&float, channels);
-                let resampled = resample(&mono, sample_rate, TARGET_SAMPLE_RATE);
-                let _ = tx.send(resampled);
-            },
-            |err| tracing::error!("audio stream error: {}", err),
-            None,
-        )?,
+        SampleFormat::F32 => {
+            let agc = agc.clone();
+            let resampler = resampler.clone();
+            device.build_input_stream(
+                &config.into(),
+                move |data: &[f32], _| {
+                    let mut samples = if let Some(ref resampler) = resampler {
+                        if let Ok(mut r) = resampler.lock() {
+                            process_audio_with_resampler(data, channels, Some(&mut r))
+                        } else {
+                            process_audio(data, channels, sample_rate, TARGET_SAMPLE_RATE)
+                                .into_owned()
+                        }
+                    } else {
+                        process_audio(data, channels, sample_rate, TARGET_SAMPLE_RATE).into_owned()
+                    };
+                    if let Ok(mut agc) = agc.lock() {
+                        agc.process(&mut samples);
+                    }
+                    let _ = tx.send(samples);
+                },
+                |err| tracing::error!("audio stream error: {}", err),
+                None,
+            )?
+        }
+        SampleFormat::I16 => {
+            let agc = agc.clone();
+            let resampler = resampler.clone();
+            device.build_input_stream(
+                &config.into(),
+                move |data: &[i16], _| {
+                    let float: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
+                    let mut samples = if let Some(ref resampler) = resampler {
+                        if let Ok(mut r) = resampler.lock() {
+                            process_audio_with_resampler(&float, channels, Some(&mut r))
+                        } else {
+                            process_audio(&float, channels, sample_rate, TARGET_SAMPLE_RATE)
+                                .into_owned()
+                        }
+                    } else {
+                        process_audio(&float, channels, sample_rate, TARGET_SAMPLE_RATE)
+                            .into_owned()
+                    };
+                    if let Ok(mut agc) = agc.lock() {
+                        agc.process(&mut samples);
+                    }
+                    let _ = tx.send(samples);
+                },
+                |err| tracing::error!("audio stream error: {}", err),
+                None,
+            )?
+        }
         format => {
             return Err(crate::AudioError::StreamError(format!(
-                "unsupported sample format: {:?}",
-                format
+                "unsupported sample format: {format:?}"
             )));
         }
     };
 
-    stream.play().map_err(|e| {
-        crate::AudioError::StreamError(format!("failed to start stream: {}", e))
-    })?;
+    stream
+        .play()
+        .map_err(|e| crate::AudioError::StreamError(format!("failed to start stream: {e}")))?;
 
     Ok(stream)
 }
 
 #[derive(Clone)]
 struct AudioMixer {
-    tx: broadcast::Sender<Vec<f32>>,
-    buffers: Arc<Mutex<[Vec<f32>; 2]>>,
-    last_emit: Arc<Mutex<std::time::Instant>>,
+    tx: Sender<Vec<f32>>,
+    state: Arc<Mutex<MixerState>>,
+}
+
+struct MixerState {
+    buffers: [Vec<f32>; 2],
+    /// When we emit audio while one channel is missing, we treat the missing portion as silence
+    /// and mark the channel as "behind". Any late-arriving samples for that time window must be
+    /// dropped to avoid time-misaligned mixing ("fragment mixing").
+    pending_drop: [usize; 2],
+    last_emit: std::time::Instant,
 }
 
 impl AudioMixer {
-    fn new(tx: broadcast::Sender<Vec<f32>>) -> Self {
+    fn new(tx: Sender<Vec<f32>>) -> Self {
         Self {
             tx,
-            buffers: Arc::new(Mutex::new([Vec::new(), Vec::new()])),
-            last_emit: Arc::new(Mutex::new(std::time::Instant::now())),
+            state: Arc::new(Mutex::new(MixerState {
+                buffers: [Vec::new(), Vec::new()],
+                pending_drop: [0, 0],
+                last_emit: std::time::Instant::now(),
+            })),
         }
     }
 
     /// Push samples to the mixer. Returns false if the channel is closed (no receivers).
     fn push(&self, channel: usize, samples: Vec<f32>) -> bool {
-        let mut buffers = self.buffers.lock().unwrap();
-        buffers[channel].extend(samples);
+        let mut state = self.state.lock().expect("audio mixer state mutex poisoned");
+        state.buffers[channel].extend(samples);
 
-        let min_len = buffers[0].len().min(buffers[1].len());
-        let max_len = buffers[0].len().max(buffers[1].len());
+        // If we previously emitted while this channel was missing, discard any late-arriving
+        // samples so we don't mix across time.
+        let pending = state.pending_drop[channel].min(state.buffers[channel].len());
+        if pending > 0 {
+            state.buffers[channel].drain(..pending);
+            state.pending_drop[channel] -= pending;
+        }
 
-        // Mix when both channels have data
-        if min_len >= 160 {
-            let buf0: Vec<f32> = buffers[0].drain(..min_len).collect();
-            let buf1: Vec<f32> = buffers[1].drain(..min_len).collect();
+        self.emit_ready(&mut state)
+    }
+
+    fn emit_ready(&self, state: &mut MixerState) -> bool {
+        let min_len = state.buffers[0].len().min(state.buffers[1].len());
+        let max_len = state.buffers[0].len().max(state.buffers[1].len());
+
+        // Fast path: both channels have data; emit in batches aligned to MIXER_MIN_SAMPLES.
+        if min_len >= MIXER_MIN_SAMPLES {
+            let len = (min_len / MIXER_MIN_SAMPLES) * MIXER_MIN_SAMPLES;
+            let buf0: Vec<f32> = state.buffers[0].drain(..len).collect();
+            let buf1: Vec<f32> = state.buffers[1].drain(..len).collect();
 
             let mixed: Vec<f32> = buf0
                 .into_iter()
@@ -348,28 +452,48 @@ impl AudioMixer {
                 .collect();
 
             if self.tx.send(mixed).is_err() {
-                return false; // No receivers, channel closed
+                return false;
             }
-            *self.last_emit.lock().unwrap() = std::time::Instant::now();
+            state.last_emit = std::time::Instant::now();
+            return true;
         }
-        // Fallback: emit from single channel if the other is silent/unavailable
-        else if max_len >= 1600 {
-            // ~100ms of audio from one channel with nothing from the other
-            let elapsed = self.last_emit.lock().unwrap().elapsed();
-            if elapsed.as_millis() > 200 {
-                // If we haven't emitted in 200ms, just send what we have
-                let len = max_len.min(1600);
-                let output: Vec<f32> = if buffers[0].len() >= len {
-                    buffers[0].drain(..len).collect()
-                } else {
-                    buffers[1].drain(..len).collect()
-                };
-                if self.tx.send(output).is_err() {
-                    return false; // No receivers, channel closed
-                }
-                *self.last_emit.lock().unwrap() = std::time::Instant::now();
+
+        // Fallback: if one channel is not producing, emit from the other to keep streaming alive.
+        // IMPORTANT: we must preserve time alignment. We treat missing samples as silence and
+        // mark the missing channel for dropping the equivalent amount if it produces audio later.
+        if max_len >= MIXER_FALLBACK_SAMPLES
+            && state.last_emit.elapsed().as_millis() > MIXER_FALLBACK_TIMEOUT_MS
+        {
+            let len = (max_len.min(MIXER_FALLBACK_SAMPLES) / MIXER_MIN_SAMPLES) * MIXER_MIN_SAMPLES;
+            if len == 0 {
+                return true;
             }
+
+            let take0 = state.buffers[0].len().min(len);
+            let take1 = state.buffers[1].len().min(len);
+            let buf0: Vec<f32> = state.buffers[0].drain(..take0).collect();
+            let buf1: Vec<f32> = state.buffers[1].drain(..take1).collect();
+
+            if take0 < len {
+                state.pending_drop[0] = state.pending_drop[0].saturating_add(len - take0);
+            }
+            if take1 < len {
+                state.pending_drop[1] = state.pending_drop[1].saturating_add(len - take1);
+            }
+
+            let mut mixed = Vec::with_capacity(len);
+            for i in 0..len {
+                let a = buf0.get(i).copied().unwrap_or(0.0);
+                let b = buf1.get(i).copied().unwrap_or(0.0);
+                mixed.push((a + b) * 0.5);
+            }
+
+            if self.tx.send(mixed).is_err() {
+                return false;
+            }
+            state.last_emit = std::time::Instant::now();
         }
+
         true
     }
 }
@@ -382,72 +506,314 @@ fn build_stream_with_mixer(
     tracing::info!(channel, "build_stream_with_mixer: getting default config");
     let config = device.default_input_config().map_err(|e| {
         tracing::error!(channel, error = %e, "build_stream_with_mixer: failed to get config");
-        crate::AudioError::StreamError(format!("failed to get default config: {}", e))
+        crate::AudioError::StreamError(format!("failed to get default config: {e}"))
     })?;
-    tracing::info!(channel, sample_rate = config.sample_rate().0, channels = config.channels(), "build_stream_with_mixer: config obtained");
+    tracing::info!(
+        channel,
+        sample_rate = config.sample_rate().0,
+        channels = config.channels(),
+        "build_stream_with_mixer: config obtained"
+    );
 
     let sample_rate = config.sample_rate().0;
     let channels = config.channels() as usize;
+    let agc = Arc::new(Mutex::new(AgcState::default()));
+
+    // Use sinc resampler for high-quality resampling when needed
+    let resampler = if sample_rate != TARGET_SAMPLE_RATE {
+        SincResampler::new(sample_rate, TARGET_SAMPLE_RATE).map(|r| Arc::new(Mutex::new(r)))
+    } else {
+        None
+    };
 
     tracing::info!(channel, format = ?config.sample_format(), "build_stream_with_mixer: building input stream");
     let stream = match config.sample_format() {
-        SampleFormat::F32 => device.build_input_stream(
-            &config.into(),
-            move |data: &[f32], _| {
-                let mono = to_mono(data, channels);
-                let resampled = resample(&mono, sample_rate, TARGET_SAMPLE_RATE);
-                mixer.push(channel, resampled);
-            },
-            |err| tracing::error!("audio stream error: {}", err),
-            None,
-        )?,
-        SampleFormat::I16 => device.build_input_stream(
-            &config.into(),
-            move |data: &[i16], _| {
-                let float: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
-                let mono = to_mono(&float, channels);
-                let resampled = resample(&mono, sample_rate, TARGET_SAMPLE_RATE);
-                mixer.push(channel, resampled);
-            },
-            |err| tracing::error!("audio stream error: {}", err),
-            None,
-        )?,
+        SampleFormat::F32 => {
+            let agc = agc.clone();
+            let resampler = resampler.clone();
+            device.build_input_stream(
+                &config.into(),
+                move |data: &[f32], _| {
+                    let mut samples = if let Some(ref resampler) = resampler {
+                        if let Ok(mut r) = resampler.lock() {
+                            process_audio_with_resampler(data, channels, Some(&mut r))
+                        } else {
+                            process_audio(data, channels, sample_rate, TARGET_SAMPLE_RATE)
+                                .into_owned()
+                        }
+                    } else {
+                        process_audio(data, channels, sample_rate, TARGET_SAMPLE_RATE).into_owned()
+                    };
+                    if let Ok(mut agc) = agc.lock() {
+                        agc.process(&mut samples);
+                    }
+                    mixer.push(channel, samples);
+                },
+                |err| tracing::error!("audio stream error: {}", err),
+                None,
+            )?
+        }
+        SampleFormat::I16 => {
+            let agc = agc.clone();
+            let resampler = resampler.clone();
+            device.build_input_stream(
+                &config.into(),
+                move |data: &[i16], _| {
+                    let float: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
+                    let mut samples = if let Some(ref resampler) = resampler {
+                        if let Ok(mut r) = resampler.lock() {
+                            process_audio_with_resampler(&float, channels, Some(&mut r))
+                        } else {
+                            process_audio(&float, channels, sample_rate, TARGET_SAMPLE_RATE)
+                                .into_owned()
+                        }
+                    } else {
+                        process_audio(&float, channels, sample_rate, TARGET_SAMPLE_RATE)
+                            .into_owned()
+                    };
+                    if let Ok(mut agc) = agc.lock() {
+                        agc.process(&mut samples);
+                    }
+                    mixer.push(channel, samples);
+                },
+                |err| tracing::error!("audio stream error: {}", err),
+                None,
+            )?
+        }
         format => {
-            tracing::error!(channel, ?format, "build_stream_with_mixer: unsupported format");
+            tracing::error!(
+                channel,
+                ?format,
+                "build_stream_with_mixer: unsupported format"
+            );
             return Err(crate::AudioError::StreamError(format!(
-                "unsupported sample format: {:?}",
-                format
+                "unsupported sample format: {format:?}"
             )));
         }
     };
 
-    tracing::info!(channel, "build_stream_with_mixer: stream built, calling play()");
+    tracing::info!(
+        channel,
+        "build_stream_with_mixer: stream built, calling play()"
+    );
     stream.play().map_err(|e| {
         tracing::error!(channel, error = %e, "build_stream_with_mixer: play() failed");
-        crate::AudioError::StreamError(format!("failed to start stream: {}", e))
+        crate::AudioError::StreamError(format!("failed to start stream: {e}"))
     })?;
 
-    tracing::info!(channel, "build_stream_with_mixer: stream started successfully");
+    tracing::info!(
+        channel,
+        "build_stream_with_mixer: stream started successfully"
+    );
     Ok(stream)
 }
 
-fn to_mono(samples: &[f32], channels: usize) -> Vec<f32> {
-    if channels == 1 {
-        return samples.to_vec();
-    }
-    samples
-        .chunks(channels)
-        .map(|chunk| chunk.iter().sum::<f32>() / channels as f32)
-        .collect()
+use std::borrow::Cow;
+
+// ============================================================================
+// Automatic Gain Control (AGC)
+// ============================================================================
+
+/// Target RMS level in dBFS (decibels relative to full scale).
+/// -20 dBFS is a common target for speech that avoids clipping while being loud enough.
+const AGC_TARGET_DBFS: f32 = -20.0;
+
+/// Minimum RMS threshold in dBFS below which we don't boost.
+/// Prevents boosting silence/noise floor.
+const AGC_NOISE_FLOOR_DBFS: f32 = -50.0;
+
+/// Maximum gain to apply (prevents extreme amplification of quiet signals).
+const AGC_MAX_GAIN: f32 = 10.0;
+
+/// Minimum gain to apply (prevents extreme attenuation).
+const AGC_MIN_GAIN: f32 = 0.1;
+
+/// Smoothing factor for gain changes (0-1, higher = faster response).
+/// 0.1 gives smooth transitions over ~100ms at typical chunk rates.
+const AGC_SMOOTHING: f32 = 0.1;
+
+/// AGC state that tracks running gain and applies smooth adjustments.
+#[derive(Clone)]
+struct AgcState {
+    current_gain: f32,
 }
 
-fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
-    if from_rate == to_rate {
-        return samples.to_vec();
+impl Default for AgcState {
+    fn default() -> Self {
+        Self { current_gain: 1.0 }
     }
+}
+
+impl AgcState {
+    /// Apply AGC to audio samples in place.
+    fn process(&mut self, samples: &mut [f32]) {
+        if samples.is_empty() {
+            return;
+        }
+
+        // Calculate RMS (root mean square) of the signal
+        let sum_sq: f32 = samples.iter().map(|s| s * s).sum();
+        let rms = (sum_sq / samples.len() as f32).sqrt();
+
+        // Convert to dBFS
+        let rms_dbfs = if rms > 0.0 {
+            20.0 * rms.log10()
+        } else {
+            -100.0 // Silence
+        };
+
+        // Only apply AGC if signal is above noise floor
+        if rms_dbfs > AGC_NOISE_FLOOR_DBFS {
+            // Calculate target gain
+            let target_gain = 10.0_f32.powf((AGC_TARGET_DBFS - rms_dbfs) / 20.0);
+            let target_gain = target_gain.clamp(AGC_MIN_GAIN, AGC_MAX_GAIN);
+
+            // Smooth gain transition
+            self.current_gain =
+                self.current_gain * (1.0 - AGC_SMOOTHING) + target_gain * AGC_SMOOTHING;
+        }
+        // If below noise floor, gradually return to unity gain
+        else {
+            self.current_gain =
+                self.current_gain * (1.0 - AGC_SMOOTHING * 0.5) + 1.0 * AGC_SMOOTHING * 0.5;
+        }
+
+        // Apply gain and soft clip to prevent distortion
+        for sample in samples.iter_mut() {
+            *sample *= self.current_gain;
+            // Soft clipping using tanh for smooth limiting
+            if sample.abs() > 0.9 {
+                *sample = sample.signum() * (0.9 + 0.1 * ((*sample).abs() - 0.9).tanh());
+            }
+        }
+    }
+}
+
+// ============================================================================
+// High-Quality Resampling with Rubato
+// ============================================================================
+
+use rubato::{FftFixedIn, Resampler as RubatoResampler};
+
+/// Wrapper for rubato sinc resampler with buffering for variable input sizes.
+struct SincResampler {
+    resampler: FftFixedIn<f32>,
+    input_buffer: Vec<f32>,
+    chunk_size: usize,
+}
+
+impl SincResampler {
+    fn new(from_rate: u32, to_rate: u32) -> Option<Self> {
+        // Use a reasonable chunk size for low-latency processing
+        let chunk_size = 256;
+
+        let resampler = FftFixedIn::<f32>::new(
+            from_rate as usize,
+            to_rate as usize,
+            chunk_size,
+            2, // Sub-chunks for better quality
+            1, // Mono channel
+        )
+        .ok()?;
+
+        Some(Self {
+            resampler,
+            input_buffer: Vec::with_capacity(chunk_size * 2),
+            chunk_size,
+        })
+    }
+
+    /// Process input samples and return resampled output.
+    fn process(&mut self, samples: &[f32]) -> Vec<f32> {
+        self.input_buffer.extend_from_slice(samples);
+
+        let mut output = Vec::new();
+
+        // Process complete chunks
+        while self.input_buffer.len() >= self.chunk_size {
+            let chunk: Vec<f32> = self.input_buffer.drain(..self.chunk_size).collect();
+
+            if let Ok(resampled) = self.resampler.process(&[chunk], None) {
+                if !resampled.is_empty() {
+                    output.extend_from_slice(&resampled[0]);
+                }
+            }
+        }
+
+        output
+    }
+}
+
+// ============================================================================
+// Audio Processing Pipeline
+// ============================================================================
+
+/// Process audio: convert to mono and resample in a single pass when possible.
+/// Uses Cow to avoid allocation when no processing is needed.
+fn process_audio<'a>(
+    samples: &'a [f32],
+    channels: usize,
+    from_rate: u32,
+    to_rate: u32,
+) -> Cow<'a, [f32]> {
+    let needs_mono = channels > 1;
+    let needs_resample = from_rate != to_rate;
+
+    match (needs_mono, needs_resample) {
+        // No processing needed
+        (false, false) => Cow::Borrowed(samples),
+
+        // Only mono conversion
+        (true, false) => Cow::Owned(to_mono_only(samples, channels)),
+
+        // Only resampling (already mono) - use linear for stateless operation
+        (false, true) => Cow::Owned(resample_linear(samples, from_rate, to_rate)),
+
+        // Both needed - combined pass
+        (true, true) => Cow::Owned(mono_and_resample_linear(
+            samples, channels, from_rate, to_rate,
+        )),
+    }
+}
+
+/// Process audio with stateful rubato resampler for high-quality output.
+fn process_audio_with_resampler(
+    samples: &[f32],
+    channels: usize,
+    resampler: Option<&mut SincResampler>,
+) -> Vec<f32> {
+    let mono = if channels > 1 {
+        to_mono_only(samples, channels)
+    } else {
+        samples.to_vec()
+    };
+
+    match resampler {
+        Some(r) => r.process(&mono),
+        None => mono,
+    }
+}
+
+#[inline]
+fn to_mono_only(samples: &[f32], channels: usize) -> Vec<f32> {
+    let mono_len = samples.len() / channels;
+    let mut output = Vec::with_capacity(mono_len);
+    let inv_channels = 1.0 / channels as f32;
+
+    for chunk in samples.chunks_exact(channels) {
+        let sum: f32 = chunk.iter().sum();
+        output.push(sum * inv_channels);
+    }
+    output
+}
+
+/// Linear interpolation resampling (fallback for stateless operation).
+#[inline]
+fn resample_linear(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
     let ratio = to_rate as f64 / from_rate as f64;
     let new_len = (samples.len() as f64 * ratio) as usize;
     let mut output = Vec::with_capacity(new_len);
+
     for i in 0..new_len {
         let src_idx = i as f64 / ratio;
         let idx = src_idx.floor() as usize;
@@ -460,6 +826,40 @@ fn resample(samples: &[f32], from_rate: u32, to_rate: u32) -> Vec<f32> {
             0.0
         };
         output.push(sample);
+    }
+    output
+}
+
+/// Combined mono conversion and linear resampling in a single pass.
+fn mono_and_resample_linear(
+    samples: &[f32],
+    channels: usize,
+    from_rate: u32,
+    to_rate: u32,
+) -> Vec<f32> {
+    let mono_len = samples.len() / channels;
+    let ratio = to_rate as f64 / from_rate as f64;
+    let output_len = (mono_len as f64 * ratio) as usize;
+    let mut output = Vec::with_capacity(output_len);
+    let inv_channels = 1.0 / channels as f32;
+
+    for i in 0..output_len {
+        let src_idx = i as f64 / ratio;
+        let idx = src_idx.floor() as usize;
+        let frac = src_idx.fract() as f32;
+
+        // Get mono sample at idx
+        let sample_at = |mono_idx: usize| -> f32 {
+            if mono_idx >= mono_len {
+                return 0.0;
+            }
+            let start = mono_idx * channels;
+            samples[start..start + channels].iter().sum::<f32>() * inv_channels
+        };
+
+        let s0 = sample_at(idx);
+        let s1 = sample_at(idx + 1);
+        output.push(s0 * (1.0 - frac) + s1 * frac);
     }
     output
 }

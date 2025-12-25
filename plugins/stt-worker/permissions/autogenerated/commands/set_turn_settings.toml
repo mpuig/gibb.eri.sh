@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-set-turn-settings"
+description = "Enables the set_turn_settings command without any pre-configured scope."
+commands.allow = ["set_turn_settings"]
+
+[[permission]]
+identifier = "deny-set-turn-settings"
+description = "Denies the set_turn_settings command without any pre-configured scope."
+commands.deny = ["set_turn_settings"]

@@ -23,6 +23,7 @@ gibberish-vad.workspace = true
 gibberish-transcript.workspace = true
 gibberish-models.workspace = true
 gibberish-storage.workspace = true
+gibberish-bus.workspace = true
 
 tauri-plugin-gibberish-tray.workspace = true
 tauri-plugin-gibberish-recorder.workspace = true

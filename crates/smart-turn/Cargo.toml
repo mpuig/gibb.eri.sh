@@ -1,0 +1,11 @@
+[package]
+name = "gibberish-smart-turn"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+gibberish-turn.workspace = true
+thiserror.workspace = true
+ort.workspace = true
+rustfft = "6.4"
+

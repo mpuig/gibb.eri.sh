@@ -45,23 +45,21 @@ fn setup_tray<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Box<dyn std::
         .icon(icon)
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| {
-            match event.id.as_ref() {
-                "start" => {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.emit("tray:start-recording", ());
-                    }
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "start" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.emit("tray:start-recording", ());
                 }
-                "stop" => {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.emit("tray:stop-recording", ());
-                    }
-                }
-                "quit" => {
-                    app.exit(0);
-                }
-                _ => {}
             }
+            "stop" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.emit("tray:stop-recording", ());
+                }
+            }
+            "quit" => {
+                app.exit(0);
+            }
+            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {

@@ -1,13 +1,9 @@
-use super::{state::CacheKey, SharedState, WikiSummaryDto};
-use std::path::PathBuf;
+use crate::SharedState;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tauri::{Emitter, Manager};
-use tauri::{Runtime, State};
+use std::time::Instant;
+use tauri::{Emitter, Manager, Runtime, State};
 
-const DEFAULT_LANG: &str = "en";
-const DEFAULT_SENTENCES: u8 = 2;
-const CACHE_TTL: Duration = Duration::from_secs(60 * 15);
 const FUNCTIONGEMMA_DEFAULT_VARIANT: &str = "model_q4";
 
 fn functiongemma_base_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
@@ -30,62 +26,19 @@ fn functiongemma_model_paths<R: Runtime>(
     variant: &str,
 ) -> Result<(PathBuf, PathBuf, PathBuf), String> {
     let dir = functiongemma_variant_dir(app, variant)?;
-    let model_path = dir.join(format!("{}.onnx", variant));
-    let data_path = dir.join(format!("{}.onnx_data", variant));
+    let model_path = dir.join(format!("{variant}.onnx"));
+    let data_path = dir.join(format!("{variant}.onnx_data"));
     let tokenizer_path = dir.join("tokenizer.json");
     Ok((model_path, data_path, tokenizer_path))
 }
 
-fn functiongemma_is_downloaded_files(model: &PathBuf, data: &PathBuf, tok: &PathBuf) -> bool {
-    // Use a very low threshold to avoid "exists but empty" states.
-    fn ok(p: &PathBuf) -> bool {
-        std::fs::metadata(p).map(|m| m.is_file() && m.len() > 1024).unwrap_or(false)
+fn functiongemma_is_downloaded_files(model: &Path, data: &Path, tok: &Path) -> bool {
+    fn ok(p: &Path) -> bool {
+        std::fs::metadata(p)
+            .map(|m| m.is_file() && m.len() > 1024)
+            .unwrap_or(false)
     }
     ok(model) && ok(data) && ok(tok)
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ActionRouterSettingsDto {
-    pub enabled: bool,
-    pub auto_run_read_only: bool,
-    pub default_lang: String,
-}
-
-#[tauri::command]
-pub async fn get_action_router_settings(state: State<'_, SharedState>) -> Result<ActionRouterSettingsDto, String> {
-    let guard = state.lock().await;
-    Ok(ActionRouterSettingsDto {
-        enabled: guard.router_enabled,
-        auto_run_read_only: guard.router_auto_run_read_only,
-        default_lang: guard.router_default_lang.clone(),
-    })
-}
-
-#[tauri::command]
-pub async fn set_action_router_settings(
-    state: State<'_, SharedState>,
-    enabled: Option<bool>,
-    auto_run_read_only: Option<bool>,
-    default_lang: Option<String>,
-) -> Result<ActionRouterSettingsDto, String> {
-    let mut guard = state.lock().await;
-    if let Some(v) = enabled {
-        guard.router_enabled = v;
-    }
-    if let Some(v) = auto_run_read_only {
-        guard.router_auto_run_read_only = v;
-    }
-    if let Some(lang) = default_lang {
-        let trimmed = lang.trim();
-        if !trimmed.is_empty() {
-            guard.router_default_lang = trimmed.to_string();
-        }
-    }
-    Ok(ActionRouterSettingsDto {
-        enabled: guard.router_enabled,
-        auto_run_read_only: guard.router_auto_run_read_only,
-        default_lang: guard.router_default_lang.clone(),
-    })
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -110,10 +63,11 @@ pub async fn get_functiongemma_status<R: Runtime>(
 
     let guard = state.lock().await;
     let (downloading, download_progress, downloaded_bytes, total_bytes, download_file) =
-        if let Some(dl) = &guard.functiongemma_download {
+        if let Some(dl) = &guard.functiongemma.download {
             let progress = if dl.total_bytes > 0 {
                 Some(
-                    (((dl.downloaded_bytes as f64 / dl.total_bytes as f64) * 100.0) as u32).min(100),
+                    (((dl.downloaded_bytes as f64 / dl.total_bytes as f64) * 100.0) as u32)
+                        .min(100),
                 )
             } else {
                 None
@@ -130,15 +84,19 @@ pub async fn get_functiongemma_status<R: Runtime>(
         };
 
     Ok(FunctionGemmaStatusDto {
-        loaded: guard.functiongemma.is_some(),
-        loaded_variant: guard.functiongemma.as_ref().map(|m| m.variant.clone()),
+        loaded: guard.functiongemma.model.is_some(),
+        loaded_variant: guard
+            .functiongemma
+            .model
+            .as_ref()
+            .map(|m| m.variant.clone()),
         default_variant,
         downloading,
         download_progress,
         downloaded_bytes,
         total_bytes,
         download_file,
-        last_error: guard.functiongemma_last_error.clone(),
+        last_error: guard.functiongemma.last_error.clone(),
     })
 }
 
@@ -161,7 +119,8 @@ pub async fn list_functiongemma_models<R: Runtime>(
         let is_downloaded = functiongemma_is_downloaded_files(&model, &data, &tok);
         let guard = state.lock().await;
         let is_downloading = guard
-            .functiongemma_download
+            .functiongemma
+            .download
             .as_ref()
             .map(|d| d.variant == spec.variant)
             .unwrap_or(false);
@@ -183,17 +142,19 @@ pub async fn download_functiongemma_model<R: Runtime>(
     variant: String,
 ) -> Result<String, String> {
     if !crate::functiongemma_models::is_supported_variant(&variant) {
-        return Err(format!("Unsupported FunctionGemma variant: {}", variant));
+        return Err(format!("Unsupported FunctionGemma variant: {variant}"));
     }
 
     let (model_path, data_path, tokenizer_path) = functiongemma_model_paths(&app, &variant)?;
     if functiongemma_is_downloaded_files(&model_path, &data_path, &tokenizer_path) {
-        return Ok(functiongemma_variant_dir(&app, &variant)?.to_string_lossy().to_string());
+        return Ok(functiongemma_variant_dir(&app, &variant)?
+            .to_string_lossy()
+            .to_string());
     }
 
     {
         let guard = state.lock().await;
-        if let Some(dl) = &guard.functiongemma_download {
+        if let Some(dl) = &guard.functiongemma.download {
             if dl.variant == variant {
                 return Err("Download already in progress".to_string());
             }
@@ -204,12 +165,11 @@ pub async fn download_functiongemma_model<R: Runtime>(
         }
     }
 
-    // Mark download in progress
     let cancel = tokio_util::sync::CancellationToken::new();
     {
         let mut guard = state.lock().await;
-        guard.functiongemma_last_error = None;
-        guard.functiongemma_download = Some(crate::state::FunctionGemmaDownload {
+        guard.functiongemma.last_error = None;
+        guard.functiongemma.download = Some(crate::state::FunctionGemmaDownload {
             variant: variant.clone(),
             downloaded_bytes: 0,
             total_bytes: 0,
@@ -225,12 +185,11 @@ pub async fn download_functiongemma_model<R: Runtime>(
         .await
         .map_err(|e| e.to_string())?;
 
-    let plan = crate::functiongemma_download::FunctionGemmaDownloadPlan::for_variant(
-        &base_dir,
-        &variant,
-    );
+    let plan =
+        crate::functiongemma_download::FunctionGemmaDownloadPlan::for_variant(&base_dir, &variant);
 
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<crate::functiongemma_download::DownloadProgress>();
+    let (tx, mut rx) =
+        tokio::sync::mpsc::unbounded_channel::<crate::functiongemma_download::DownloadProgress>();
     let app_for_events = app.clone();
     let variant_for_events = variant.clone();
     let progress_task = tauri::async_runtime::spawn(async move {
@@ -244,7 +203,8 @@ pub async fn download_functiongemma_model<R: Runtime>(
             let progress = if p.total_bytes > 0 {
                 (((p.downloaded_bytes as f64 / p.total_bytes as f64) * 100.0) as u32).min(100)
             } else if p.file_total_bytes > 0 {
-                (((p.file_downloaded_bytes as f64 / p.file_total_bytes as f64) * 100.0) as u32).min(100)
+                (((p.file_downloaded_bytes as f64 / p.file_total_bytes as f64) * 100.0) as u32)
+                    .min(100)
             } else {
                 0
             };
@@ -274,14 +234,10 @@ pub async fn download_functiongemma_model<R: Runtime>(
         }
     });
 
-    let download_fut = crate::functiongemma_download::download_functiongemma(
-        &client,
-        &plan,
-        &cancel,
-        |p| {
+    let download_fut =
+        crate::functiongemma_download::download_functiongemma(&client, &plan, &cancel, |p| {
             let _ = tx.send(p);
-        },
-    );
+        });
 
     let result = tokio::select! {
         res = download_fut => res,
@@ -295,8 +251,8 @@ pub async fn download_functiongemma_model<R: Runtime>(
         Ok(_) => {
             {
                 let mut guard = state.lock().await;
-                guard.functiongemma_download = None;
-                guard.functiongemma_last_error = None;
+                guard.functiongemma.download = None;
+                guard.functiongemma.last_error = None;
             }
             let _ = app.emit(
                 "tools:functiongemma_download_complete",
@@ -308,8 +264,8 @@ pub async fn download_functiongemma_model<R: Runtime>(
             let msg = err.to_string();
             {
                 let mut guard = state.lock().await;
-                guard.functiongemma_download = None;
-                guard.functiongemma_last_error = Some(msg.clone());
+                guard.functiongemma.download = None;
+                guard.functiongemma.last_error = Some(msg.clone());
             }
             let _ = app.emit(
                 "tools:functiongemma_download_error",
@@ -326,7 +282,7 @@ pub async fn cancel_functiongemma_download(
     variant: Option<String>,
 ) -> Result<bool, String> {
     let guard = state.lock().await;
-    if let Some(dl) = &guard.functiongemma_download {
+    if let Some(dl) = &guard.functiongemma.download {
         if variant.as_deref().map(|v| v == dl.variant).unwrap_or(true) {
             dl.cancel.cancel();
             return Ok(true);
@@ -342,7 +298,7 @@ pub async fn load_functiongemma_model<R: Runtime>(
     variant: String,
 ) -> Result<FunctionGemmaStatusDto, String> {
     if !crate::functiongemma_models::is_supported_variant(&variant) {
-        return Err(format!("Unsupported FunctionGemma variant: {}", variant));
+        return Err(format!("Unsupported FunctionGemma variant: {variant}"));
     }
 
     let (model_path, data_path, tokenizer_path) = functiongemma_model_paths(&app, &variant)?;
@@ -353,7 +309,10 @@ pub async fn load_functiongemma_model<R: Runtime>(
     let model_path_for_load = model_path.clone();
     let tokenizer_path_for_load = tokenizer_path.clone();
     let runner = tokio::task::spawn_blocking(move || {
-        crate::functiongemma::FunctionGemmaRunner::load(&model_path_for_load, &tokenizer_path_for_load)
+        crate::functiongemma::FunctionGemmaRunner::load(
+            &model_path_for_load,
+            &tokenizer_path_for_load,
+        )
     })
     .await
     .map_err(|e| e.to_string())?
@@ -361,8 +320,8 @@ pub async fn load_functiongemma_model<R: Runtime>(
 
     {
         let mut guard = state.lock().await;
-        guard.functiongemma_last_error = None;
-        guard.functiongemma = Some(crate::state::FunctionGemmaModel {
+        guard.functiongemma.last_error = None;
+        guard.functiongemma.model = Some(crate::state::FunctionGemmaModel {
             variant: variant.clone(),
             model_path,
             tokenizer_path,
@@ -379,11 +338,9 @@ pub async fn load_functiongemma_model<R: Runtime>(
 }
 
 #[tauri::command]
-pub async fn unload_functiongemma_model(
-    state: State<'_, SharedState>,
-) -> Result<(), String> {
+pub async fn unload_functiongemma_model(state: State<'_, SharedState>) -> Result<(), String> {
     let mut guard = state.lock().await;
-    guard.functiongemma = None;
+    guard.functiongemma.model = None;
     Ok(())
 }
 
@@ -392,47 +349,9 @@ pub async fn get_current_functiongemma_model(
     state: State<'_, SharedState>,
 ) -> Result<Option<String>, String> {
     let guard = state.lock().await;
-    Ok(guard.functiongemma.as_ref().map(|m| m.variant.clone()))
-}
-
-#[tauri::command]
-pub async fn wikipedia_city_lookup(
-    state: State<'_, SharedState>,
-    city: String,
-    lang: Option<String>,
-    sentences: Option<u8>,
-) -> Result<WikiSummaryDto, String> {
-    let lang = lang.unwrap_or_else(|| DEFAULT_LANG.to_string());
-    let sentences = sentences.unwrap_or(DEFAULT_SENTENCES).max(1).min(10);
-
-    let key = CacheKey::new(&lang, &city);
-
-    // Cache hit
-    {
-        let guard = state.lock().await;
-        if let Some(entry) = guard.cache.get(&key) {
-            if entry.fetched_at.elapsed() <= CACHE_TTL {
-                return Ok(entry.value.clone());
-            }
-        }
-    }
-
-    // Cache miss (or expired): fetch outside lock
-    let fetched = super::wikipedia::fetch_city_summary(&lang, &city, sentences)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Store in cache
-    {
-        let mut guard = state.lock().await;
-        guard.cache.insert(
-            key,
-            super::state::CacheEntry {
-                fetched_at: Instant::now(),
-                value: fetched.clone(),
-            },
-        );
-    }
-
-    Ok(fetched)
+    Ok(guard
+        .functiongemma
+        .model
+        .as_ref()
+        .map(|m| m.variant.clone()))
 }

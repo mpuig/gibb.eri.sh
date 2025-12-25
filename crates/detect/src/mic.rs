@@ -1,6 +1,6 @@
 #[cfg(target_os = "macos")]
 mod macos {
-    use crate::{BackgroundTask, DetectCallback, DetectEvent, InstalledApp, list_mic_using_apps};
+    use crate::{list_mic_using_apps, BackgroundTask, DetectCallback, DetectEvent, InstalledApp};
     use cidre::{core_audio as ca, os};
     use std::collections::HashSet;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,16 +15,9 @@ mod macos {
 
     const POLL_INTERVAL: Duration = Duration::from_secs(1);
 
+    #[derive(Default)]
     pub struct Detector {
         background: BackgroundTask,
-    }
-
-    impl Default for Detector {
-        fn default() -> Self {
-            Self {
-                background: BackgroundTask::default(),
-            }
-        }
     }
 
     struct DetectorState {
@@ -63,6 +56,8 @@ mod macos {
         current_device: Arc<Mutex<Option<ca::Device>>>,
         state: Arc<Mutex<DetectorState>>,
         polling_active: Arc<AtomicBool>,
+        /// Shutdown signal for all threads.
+        shutdown: Arc<AtomicBool>,
     }
 
     impl SharedContext {
@@ -72,6 +67,7 @@ mod macos {
                 current_device: Arc::new(Mutex::new(None)),
                 state: Arc::new(Mutex::new(DetectorState::new())),
                 polling_active: Arc::new(AtomicBool::new(false)),
+                shutdown: Arc::new(AtomicBool::new(false)),
             }
         }
 
@@ -81,7 +77,12 @@ mod macos {
                 current_device: self.current_device.clone(),
                 state: self.state.clone(),
                 polling_active: self.polling_active.clone(),
+                shutdown: self.shutdown.clone(),
             }
+        }
+
+        fn is_shutdown(&self) -> bool {
+            self.shutdown.load(Ordering::SeqCst)
         }
 
         fn emit(&self, event: DetectEvent) {
@@ -151,8 +152,12 @@ mod macos {
 
     fn spawn_polling_thread(ctx: SharedContext) {
         std::thread::spawn(move || {
-            loop {
+            while !ctx.is_shutdown() {
                 std::thread::sleep(POLL_INTERVAL);
+
+                if ctx.is_shutdown() {
+                    break;
+                }
 
                 if !ctx.polling_active.load(Ordering::SeqCst) {
                     continue;
@@ -183,6 +188,7 @@ mod macos {
                     }
                 }
             }
+            tracing::debug!("polling thread exiting");
         });
     }
 
@@ -258,7 +264,11 @@ mod macos {
     impl crate::Observer for Detector {
         fn start(&mut self, f: DetectCallback) {
             self.background.start(|running, mut rx| async move {
-                let (tx, mut notify_rx) = tokio::sync::mpsc::channel(1);
+                let (ready_tx, mut ready_rx) = tokio::sync::mpsc::channel::<()>(1);
+                let (done_tx, mut done_rx) = tokio::sync::mpsc::channel::<()>(1);
+
+                // Clone running flag for the listener thread
+                let thread_running = running.clone();
 
                 std::thread::spawn(move || {
                     let ctx = SharedContext::new(f);
@@ -272,7 +282,7 @@ mod macos {
                     let device_listener_ptr = Box::into_raw(device_listener_data) as *mut ();
 
                     let system_listener_data = Box::new(ListenerData {
-                        ctx,
+                        ctx: ctx.clone_shared(),
                         device_listener_ptr,
                     });
                     let system_listener_ptr = Box::into_raw(system_listener_data) as *mut ();
@@ -319,14 +329,52 @@ mod macos {
                         Err(_) => tracing::warn!("no_default_input_device_found"),
                     }
 
-                    let _ = tx.blocking_send(());
-                    loop {
-                        std::thread::park();
+                    // Signal that setup is complete
+                    let _ = ready_tx.blocking_send(());
+
+                    // Wait for shutdown signal (poll instead of parking forever)
+                    while thread_running.load(Ordering::SeqCst) {
+                        std::thread::sleep(Duration::from_millis(100));
                     }
+
+                    // Signal shutdown to polling thread
+                    ctx.shutdown.store(true, Ordering::SeqCst);
+
+                    // Clean up listeners
+                    tracing::debug!("cleaning up mic detector listeners");
+
+                    // Remove system listener
+                    let _ = ca::System::OBJ.remove_prop_listener(
+                        &ca::PropSelector::HW_DEFAULT_INPUT_DEVICE.global_addr(),
+                        system_listener,
+                        system_listener_ptr,
+                    );
+
+                    // Remove device listener if device is set
+                    if let Ok(device_guard) = ctx.current_device.lock() {
+                        if let Some(ref device) = *device_guard {
+                            let _ = device.remove_prop_listener(
+                                &DEVICE_IS_RUNNING_SOMEWHERE,
+                                device_listener,
+                                device_listener_ptr,
+                            );
+                        }
+                    }
+
+                    // Free the Box'd data
+                    unsafe {
+                        drop(Box::from_raw(system_listener_ptr as *mut ListenerData));
+                        drop(Box::from_raw(device_listener_ptr as *mut ListenerData));
+                    }
+
+                    tracing::debug!("mic detector listener thread exiting");
+                    let _ = done_tx.blocking_send(());
                 });
 
-                let _ = notify_rx.recv().await;
+                // Wait for setup to complete
+                let _ = ready_rx.recv().await;
 
+                // Wait for stop signal
                 loop {
                     tokio::select! {
                         _ = &mut rx => break,
@@ -337,6 +385,9 @@ mod macos {
                         }
                     }
                 }
+
+                // Wait for thread cleanup to complete (with timeout)
+                let _ = tokio::time::timeout(Duration::from_secs(2), done_rx.recv()).await;
             });
         }
 

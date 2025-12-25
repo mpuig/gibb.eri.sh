@@ -5,7 +5,10 @@ mod stream;
 #[cfg(target_os = "macos")]
 mod speaker;
 
-pub use device::{AudioDevice, DeviceType, get_default_device, list_devices, find_virtual_device, find_device_by_id};
+pub use device::{
+    find_device_by_id, find_virtual_device, get_default_device, list_devices, AudioDevice,
+    DeviceType,
+};
 pub use recorder::AudioRecorder;
 pub use stream::{AudioSource, AudioStream};
 
@@ -39,10 +42,7 @@ mod tests {
         let devices = list_devices().unwrap();
         println!("Found {} audio devices:", devices.len());
         for device in &devices {
-            println!(
-                "  - {} (default: {})",
-                device.name, device.is_default
-            );
+            println!("  - {} (default: {})", device.name, device.is_default);
         }
     }
 

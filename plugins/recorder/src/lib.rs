@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -8,9 +9,9 @@ use tauri::{
     plugin::{Builder, TauriPlugin},
     Emitter, Manager, Runtime, State,
 };
-use tokio::sync::broadcast::error::TryRecvError;
 
 use gibberish_audio::{AudioRecorder, AudioSource, AudioStream};
+use gibberish_bus::{AudioBusSender, CHUNK_SAMPLES, SAMPLE_RATE};
 
 pub struct RecorderState {
     is_recording: Arc<AtomicBool>,
@@ -64,6 +65,7 @@ pub enum AudioSourceType {
 async fn start_recording<R: Runtime>(
     app: tauri::AppHandle<R>,
     state: State<'_, RecorderState>,
+    bus_sender: State<'_, AudioBusSender>,
     device_id: Option<String>,
     source_type: Option<AudioSourceType>,
     system_device_id: Option<String>,
@@ -80,12 +82,15 @@ async fn start_recording<R: Runtime>(
     let stop_signal = Arc::clone(&state.stop_signal);
     let is_recording = Arc::clone(&state.is_recording);
     let app_clone = app.clone();
+    let bus_sender = bus_sender.inner().clone();
 
     let handle = thread::spawn(move || {
         tracing::info!("Recording thread started");
         let source = match source_type.unwrap_or(AudioSourceType::Microphone) {
             AudioSourceType::Microphone => AudioSource::Microphone { device_id },
-            AudioSourceType::System => AudioSource::SystemAudio { device_id: system_device_id },
+            AudioSourceType::System => AudioSource::SystemAudio {
+                device_id: system_device_id,
+            },
             AudioSourceType::Combined => AudioSource::Combined {
                 mic_device_id: device_id,
                 system_device_id,
@@ -93,10 +98,15 @@ async fn start_recording<R: Runtime>(
             #[cfg(target_os = "macos")]
             AudioSourceType::SystemNative => AudioSource::SystemAudioNative,
             #[cfg(target_os = "macos")]
-            AudioSourceType::CombinedNative => AudioSource::CombinedNative { mic_device_id: device_id },
+            AudioSourceType::CombinedNative => AudioSource::CombinedNative {
+                mic_device_id: device_id,
+            },
             #[cfg(not(target_os = "macos"))]
             AudioSourceType::SystemNative | AudioSourceType::CombinedNative => {
-                let _ = app_clone.emit("recorder:error", "Native system audio is only available on macOS");
+                let _ = app_clone.emit(
+                    "recorder:error",
+                    "Native system audio is only available on macOS",
+                );
                 return;
             }
         };
@@ -114,8 +124,17 @@ async fn start_recording<R: Runtime>(
             }
         };
 
-        let mut rx = stream.take_receiver().expect("receiver already taken");
-        let mut chunk_buffer: Vec<f32> = Vec::with_capacity(8000); // 500ms at 16kHz
+        let rx = match stream.take_receiver() {
+            Some(rx) => rx,
+            None => {
+                tracing::error!("Audio stream receiver already taken");
+                let _ = app_clone.emit("recorder:error", "Audio stream receiver already taken");
+                is_recording.store(false, Ordering::SeqCst);
+                return;
+            }
+        };
+        // Ring buffer for O(1) drain from front (avoids O(n) Vec shift)
+        let mut bus_buffer: VecDeque<f32> = VecDeque::with_capacity(CHUNK_SAMPLES * 2);
 
         let initial_stop_signal = stop_signal.load(Ordering::SeqCst);
         tracing::info!(initial_stop_signal, "Recording loop starting");
@@ -123,57 +142,104 @@ async fn start_recording<R: Runtime>(
             tracing::error!("stop_signal is already true at loop start!");
         }
         let mut recv_count = 0u64;
-        while !stop_signal.load(Ordering::SeqCst) {
-            match rx.try_recv() {
+        let mut bus_chunks_sent = 0u64;
+
+        // Monotonic timestamp tracking: base time + sample count for stable timing
+        let recording_start = Instant::now();
+        let wall_clock_start_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        let mut total_samples_sent: u64 = 0;
+
+        // Blocking recv with timeout for efficient CPU usage (no polling)
+        loop {
+            // Use recv_timeout for efficient blocking with periodic stop checks
+            match rx.recv_timeout(Duration::from_millis(50)) {
                 Ok(samples) => {
                     recv_count += 1;
                     if recv_count <= 3 {
-                        tracing::info!(recv_count, samples_len = samples.len(), "Received audio samples");
+                        tracing::info!(
+                            recv_count,
+                            samples_len = samples.len(),
+                            "Received audio samples"
+                        );
                     }
                     recorder.push_samples(&samples);
 
-                    // Emit audio level
+                    // Emit audio level for UI visualization
                     let level = calculate_level(&samples);
                     let _ = app_clone.emit("recorder:audio-level", level);
 
-                    // Buffer samples and emit chunks for real-time transcription
-                    chunk_buffer.extend_from_slice(&samples);
-                    if chunk_buffer.len() >= 8000 {
-                        // Emit 500ms chunk for streaming transcription
-                        static EMIT_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-                        let count = EMIT_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                        if count % 10 == 0 {
-                            tracing::info!(count = count, buffer_len = chunk_buffer.len(), "emitting_audio_chunk");
+                    // Buffer samples for the audio bus (50ms chunks for responsive streaming)
+                    bus_buffer.extend(samples.iter().copied());
+                    while bus_buffer.len() >= CHUNK_SAMPLES {
+                        // Monotonic timestamp: wall clock start + sample-based offset
+                        // This avoids wall clock jumps and is more stable for audio
+                        let sample_offset_ms = (total_samples_sent * 1000) / SAMPLE_RATE as u64;
+                        let ts_ms = wall_clock_start_ms + sample_offset_ms as i64;
+
+                        // Drain from VecDeque (O(1) per element) into owned Vec
+                        let chunk_vec: Vec<f32> = bus_buffer.drain(..CHUNK_SAMPLES).collect();
+
+                        // Move Vec directly into Arc<[f32]> (no copy, just realloc)
+                        if bus_sender.send(ts_ms, SAMPLE_RATE, chunk_vec) {
+                            bus_chunks_sent += 1;
+                            total_samples_sent += CHUNK_SAMPLES as u64;
+                            if bus_chunks_sent % 20 == 0 {
+                                tracing::debug!(
+                                    bus_chunks_sent,
+                                    elapsed_ms = recording_start.elapsed().as_millis(),
+                                    "Audio bus chunks sent"
+                                );
+                            }
                         }
-                        let _ = app_clone.emit("recorder:audio-chunk", chunk_buffer.clone());
-                        chunk_buffer.clear();
                     }
                 }
-                Err(TryRecvError::Empty) => {
-                    // Avoid blocking so stop_signal can be observed promptly.
-                    std::thread::sleep(Duration::from_millis(10));
+                Err(crossbeam_channel::RecvTimeoutError::Timeout) => {
+                    // Timeout - check stop signal and continue
+                    if stop_signal.load(Ordering::SeqCst) {
+                        break;
+                    }
                 }
-                Err(TryRecvError::Lagged(skipped)) => {
-                    tracing::warn!(skipped, "Recorder receiver lagged; dropping samples");
-                }
-                Err(TryRecvError::Closed) => {
-                    tracing::warn!("Recording loop receiver closed; exiting");
+                Err(crossbeam_channel::RecvTimeoutError::Disconnected) => {
+                    tracing::warn!("Recording loop receiver disconnected, exiting");
                     break;
                 }
             }
-        }
-        tracing::info!(recv_count, total_samples = recorder.sample_count(), "Recording loop ended");
 
-        // Emit any remaining samples
-        if !chunk_buffer.is_empty() {
-            let _ = app_clone.emit("recorder:audio-chunk", chunk_buffer);
+            // Also check stop signal after successful recv
+            if stop_signal.load(Ordering::SeqCst) {
+                break;
+            }
+        }
+        tracing::info!(
+            recv_count,
+            bus_chunks_sent,
+            total_samples = recorder.sample_count(),
+            "Recording loop ended"
+        );
+
+        // Send any remaining samples to the bus.
+        if !bus_buffer.is_empty() {
+            // Use monotonic timestamp for remaining samples too
+            let sample_offset_ms = (total_samples_sent * 1000) / SAMPLE_RATE as u64;
+            let ts_ms = wall_clock_start_ms + sample_offset_ms as i64;
+            let remaining: Vec<f32> = bus_buffer.drain(..).collect();
+            bus_sender.send(ts_ms, SAMPLE_RATE, remaining);
         }
         tracing::info!("Recording thread exiting");
         is_recording.store(false, Ordering::SeqCst);
     });
 
     // Store the thread handle so we can join it on stop
-    *state.thread_handle.lock().unwrap() = Some(handle);
+    match state.thread_handle.lock() {
+        Ok(mut guard) => *guard = Some(handle),
+        Err(poisoned) => {
+            tracing::warn!("Thread handle mutex poisoned, recovering");
+            *poisoned.into_inner() = Some(handle);
+        }
+    }
 
     let _ = app.emit("recorder:started", ());
 
@@ -193,7 +259,14 @@ async fn stop_recording<R: Runtime>(
     state.is_recording.store(false, Ordering::SeqCst);
 
     // Join the recording thread to ensure audio resources are fully released
-    if let Some(handle) = state.thread_handle.lock().unwrap().take() {
+    let maybe_handle = match state.thread_handle.lock() {
+        Ok(mut guard) => guard.take(),
+        Err(poisoned) => {
+            tracing::warn!("Thread handle mutex poisoned, recovering");
+            poisoned.into_inner().take()
+        }
+    };
+    if let Some(handle) = maybe_handle {
         tracing::info!("Waiting for recording thread to finish...");
         let start = Instant::now();
         let timeout = Duration::from_secs(3);
@@ -213,11 +286,11 @@ async fn stop_recording<R: Runtime>(
     }
 
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let recordings_dir = format!("{}/Library/Application Support/gibberish/recordings", home);
+    let recordings_dir = format!("{home}/Library/Application Support/gibberish/recordings");
     std::fs::create_dir_all(&recordings_dir).map_err(|e| e.to_string())?;
 
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-    let path = format!("{}/recording_{}.wav", recordings_dir, timestamp);
+    let path = format!("{recordings_dir}/recording_{timestamp}.wav");
 
     state.recorder.save_wav(&path).map_err(|e| e.to_string())?;
 

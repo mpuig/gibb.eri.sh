@@ -1,0 +1,11 @@
+[package]
+name = "gibberish-bus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Low-latency audio bus for real-time streaming"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+tokio.workspace = true
+tracing.workspace = true

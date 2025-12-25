@@ -9,7 +9,7 @@ mod macos {
 
     /// Checks if screen recording permission has been granted.
     pub fn check_screen_recording() -> bool {
-        let access = ScreenCaptureAccess::default();
+        let access = ScreenCaptureAccess;
         access.preflight()
     }
 
@@ -17,7 +17,7 @@ mod macos {
     /// Returns true if permission was granted, false otherwise.
     /// Note: On macOS, this opens the System Preferences if permission hasn't been granted.
     pub fn request_screen_recording() -> bool {
-        let access = ScreenCaptureAccess::default();
+        let access = ScreenCaptureAccess;
         access.request()
     }
 }

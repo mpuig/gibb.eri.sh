@@ -1,6 +1,7 @@
 use crate::{StreamingTranscriber, TimedWord};
-use gibberish_parakeet::ParakeetEngine;
 use gibberish_stt::{Segment, SttEngine, Word};
+use gibberish_turn::{TurnDetector, TurnPrediction};
+use std::path::Path;
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -56,73 +57,133 @@ impl TranscriptionService {
         Ok(segments.into_iter().map(TranscriptSegment::from).collect())
     }
 
+    fn split_words_on_boundaries(
+        words: &[Word],
+        turn_boundaries_ms: &[u64],
+        speaker: Option<i32>,
+    ) -> Vec<TranscriptSegment> {
+        if words.is_empty() || turn_boundaries_ms.is_empty() {
+            return Vec::new();
+        }
+
+        let mut boundaries = turn_boundaries_ms.to_vec();
+        boundaries.sort_unstable();
+        boundaries.dedup();
+
+        let mut segments: Vec<TranscriptSegment> = Vec::new();
+        let mut current_words: Vec<&Word> = Vec::new();
+        let mut boundary_idx = 0usize;
+
+        for word in words {
+            while boundary_idx < boundaries.len() && boundaries[boundary_idx] <= word.start_ms {
+                if !current_words.is_empty() {
+                    let start_ms = current_words.first().unwrap().start_ms;
+                    let end_ms = current_words.last().unwrap().end_ms;
+                    let text = current_words
+                        .iter()
+                        .map(|w| w.text.trim())
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    segments.push(TranscriptSegment {
+                        text,
+                        start_ms,
+                        end_ms,
+                        speaker,
+                    });
+                    current_words.clear();
+                }
+                boundary_idx += 1;
+            }
+
+            current_words.push(word);
+        }
+
+        if !current_words.is_empty() {
+            let start_ms = current_words.first().unwrap().start_ms;
+            let end_ms = current_words.last().unwrap().end_ms;
+            let text = current_words
+                .iter()
+                .map(|w| w.text.trim())
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
+            segments.push(TranscriptSegment {
+                text,
+                start_ms,
+                end_ms,
+                speaker,
+            });
+        }
+
+        segments
+    }
+
     pub fn transcribe_file(
         engine: Arc<dyn SttEngine>,
         file_path: &str,
+        turn_boundaries_ms: &[u64],
     ) -> Result<Vec<TranscriptSegment>, TranscriptionError> {
-        let parakeet = engine
-            .as_any()
-            .downcast_ref::<ParakeetEngine>()
-            .ok_or_else(|| {
-                TranscriptionError::UnsupportedOperation(
-                    "Engine does not support file transcription".to_string(),
-                )
-            })?;
-
         tracing::info!("Transcribing file: {}", file_path);
 
-        let result = parakeet
-            .transcribe_file(file_path)
-            .map_err(|e| {
-                tracing::error!("Transcription failed: {}", e);
-                TranscriptionError::TranscriptionFailed(e.to_string())
-            })?;
+        // Use the trait method - each engine can optimize for file transcription
+        let segments = engine.transcribe_file(Path::new(file_path)).map_err(|e| {
+            tracing::error!("Transcription failed: {}", e);
+            TranscriptionError::TranscriptionFailed(e.to_string())
+        })?;
 
-        tracing::info!(
-            text_len = result.text.len(),
-            tokens_count = result.tokens.len(),
-            text_preview = %result.text.chars().take(100).collect::<String>(),
-            "Transcription result"
-        );
+        if turn_boundaries_ms.is_empty() {
+            return Ok(segments.into_iter().map(TranscriptSegment::from).collect());
+        }
 
-        let words: Vec<Word> = result
-            .tokens
+        // Split on turn boundaries if provided
+        let words: Vec<Word> = segments
             .iter()
-            .map(|t| {
-                let start_ms = (t.start.max(0.0) * 1000.0).round() as u64;
-                let mut end_ms = (t.end.max(0.0) * 1000.0).round() as u64;
-                if end_ms <= start_ms {
-                    end_ms = start_ms + 1;
-                }
-                Word {
-                    text: t.text.clone(),
-                    start_ms,
-                    end_ms,
-                    confidence: 1.0,
-                }
-            })
+            .flat_map(|s| s.words.iter())
+            .cloned()
             .collect();
+        let speaker = segments.first().and_then(|s| s.speaker);
 
-        let start_ms = words.first().map(|w| w.start_ms).unwrap_or(0);
-        let end_ms = words.last().map(|w| w.end_ms).unwrap_or(0);
+        if !words.is_empty() {
+            let split = Self::split_words_on_boundaries(&words, turn_boundaries_ms, speaker);
+            if !split.is_empty() {
+                return Ok(split);
+            }
+        }
 
-        Ok(vec![TranscriptSegment {
-            text: result.text,
-            start_ms,
-            end_ms,
-            speaker: None,
-        }])
+        Ok(segments.into_iter().map(TranscriptSegment::from).collect())
     }
 
     pub fn process_streaming_chunk(
         streamer: &mut StreamingTranscriber,
         engine: Option<Arc<dyn SttEngine>>,
         audio_chunk: &[f32],
+        turn_detector: Option<Arc<dyn TurnDetector>>,
+        turn_enabled: bool,
+        turn_threshold: f32,
     ) -> Result<StreamingResult, TranscriptionError> {
         static CHUNK_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let chunk_count = CHUNK_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         streamer.add_samples(audio_chunk);
+
+        // If VAD says we're in a pause, optionally use Smart Turn to decide if it's a "real" end.
+        if turn_enabled && streamer.needs_turn_prediction() {
+            if let Some(detector) = turn_detector.as_deref() {
+                let threshold = turn_threshold.clamp(0.0, 1.0);
+                match detector.predict_endpoint_probability(streamer.get_buffer()) {
+                    Ok(probability) => {
+                        streamer.set_turn_prediction(TurnPrediction {
+                            probability,
+                            threshold,
+                        });
+                    }
+                    Err(e) => {
+                        tracing::warn!("Turn detector error (ignoring): {}", e);
+                    }
+                }
+            }
+        }
 
         if chunk_count % 10 == 0 {
             tracing::info!(
@@ -178,14 +239,50 @@ impl TranscriptionService {
             })
             .collect();
 
+        // Extract segment text for engines without word-level timestamps (e.g., Whisper)
+        let segment_text: String = segments
+            .iter()
+            .map(|s| s.text.trim())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let has_word_timestamps = !words.is_empty();
+
         tracing::info!(
             segment_count = segments.len(),
             word_count = words.len(),
+            has_word_timestamps = has_word_timestamps,
             first_segment_text = %segments.first().map(|s| s.text.as_str()).unwrap_or(""),
             "streaming_transcription_result"
         );
 
         streamer.mark_transcribed();
+
+        // Handle engines without word-level timestamps (e.g., Whisper batch models).
+        // Use segment text directly as volatile text, commit on speech end.
+        if !has_word_timestamps {
+            let committed = streamer.committed_text().to_string();
+
+            // When VAD detects speech end, commit the segment text
+            if streamer.should_commit() && !segment_text.is_empty() {
+                streamer.commit_segment_text(&segment_text);
+                let new_committed = streamer.committed_text().to_string();
+                return Ok(StreamingResult {
+                    text: new_committed,
+                    volatile_text: String::new(),
+                    is_partial: streamer.buffer_duration_ms() > 0,
+                    buffer_duration_ms: streamer.buffer_duration_ms(),
+                });
+            }
+
+            return Ok(StreamingResult {
+                text: committed,
+                volatile_text: segment_text,
+                is_partial: true,
+                buffer_duration_ms: streamer.buffer_duration_ms(),
+            });
+        }
 
         // Update word tracking with timestamp-based alignment
         streamer.update_words(&words);
