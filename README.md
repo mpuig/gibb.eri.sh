@@ -1,6 +1,10 @@
-# gibb.eri.sh
+# gibb.eri.sh // Local Real-Time AI
 
-A private, local speech-to-text transcription app for macOS. All processing happens on your device - your audio never leaves your computer.
+**Intelligence without the cloud.**
+
+Speech-to-text for people who trust their CPU more than the cloud.
+A local-first, zero-latency voice assistant engine built with **Rust** and **Tauri v2**.
+Zero-copy audio pipeline. 100% Private.
 
 ## Features
 
