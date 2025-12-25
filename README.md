@@ -6,14 +6,22 @@ Speech-to-text for people who trust their CPU more than the cloud.
 A local-first, zero-latency voice assistant engine built with **Rust** and **Tauri v2**.
 Zero-copy audio pipeline. 100% Private.
 
-## Features
+## // Why Gibberish?
 
-- **100% Local Processing** - No cloud services, no data uploads, complete privacy
-- **Real-Time Transcription** - See text appear as you speak
-- **Multiple Audio Sources** - Record microphone, system audio, or both
-- **Session Management** - Automatic saving of recordings with search and browse
-- **Export Options** - Save transcripts as plain text, SRT subtitles, or JSON
-- **Multiple ASR Backends** - NVIDIA Parakeet (ONNX) and Sherpa-ONNX Zipformer (streaming)
+Most "real-time" transcription apps are just wrappers around cloud APIs. They leak your data and lag behind your voice.
+
+Gibberish is different. It runs **entirely on your device**.
+It uses a **Zero-Copy Audio Bus** to stream microphone data directly to local AI models, bypassing the slow JavaScript bridge entirely. The result is transcription that feels instant.
+
+### ✨ Key Features
+
+- **🔒 100% Private:** Your audio never leaves `localhost`. No servers, no tracking.
+- **⚡️ Zero-Latency:** Words appear char-by-char as you speak (<200ms lag).
+- **🧠 Smart Turn Detection:** Uses semantic analysis (inspired by **Daily.co VAD 3.1**) to know exactly when you've finished a sentence.
+- **🤖 Agentic Tools:** Integrated with **FunctionGemma** to detect intents and execute tools (e.g., "Search Wikipedia for...") directly from your voice commands.
+- **🎧 Hybrid Inference:** Choose your engine:
+    - **Streaming (Sherpa):** For instant "Matrix-style" feedback.
+    - **Batch (Parakeet/Whisper):** For maximum accuracy with VAD-triggered updates.
 
 ## Requirements
 
@@ -86,6 +94,7 @@ gibb.eri.sh uses NVIDIA Parakeet models via ONNX Runtime:
 | Parakeet CTC 0.6B | ~600MB | Higher accuracy, batch processing |
 | Parakeet TDT 1.1B | ~1.1GB | Best accuracy, requires more memory |
 | Sherpa Zipformer (EN) | ~250MB | Low-latency streaming transducer (English) |
+| **NeMo Conformer** | CTC | **Catalan** (Specialized) | ~500MB |
 
 Models are downloaded on first use and cached in `~/Library/Application Support/gibberish/models/`.
 
