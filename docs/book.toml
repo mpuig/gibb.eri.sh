@@ -1,0 +1,20 @@
+[book]
+title = "Gibberish Documentation"
+authors = ["Marc Puig"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "../book"
+
+[output.html]
+default-theme = "coal"
+preferred-dark-theme = "coal"
+git-repository-url = "https://github.com/mpuig/gibb.eri.sh"
+edit-url-template = "https://github.com/mpuig/gibb.eri.sh/edit/main/docs/{path}"
+site-url = "/docs/"
+cname = "gibb.eri.sh"
+
+[output.html.fold]
+enable = true
+level = 1

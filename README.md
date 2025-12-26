@@ -1,15 +1,22 @@
 # gibb.eri.sh
 
-A private, local speech-to-text transcription app for macOS. All processing happens on your device - your audio never leaves your computer.
+Local-first speech-to-text built with Rust and Tauri v2.
+
+Runs entirely on your device. Audio never leaves localhost.
+
+## Why?
+
+Most transcription apps send your audio to cloud APIs. This one doesn't.
+
+It uses a zero-copy audio bus to stream microphone data directly to local AI models, bypassing the JavaScript bridge.
 
 ## Features
 
-- **100% Local Processing** - No cloud services, no data uploads, complete privacy
-- **Real-Time Transcription** - See text appear as you speak
-- **Multiple Audio Sources** - Record microphone, system audio, or both
-- **Session Management** - Automatic saving of recordings with search and browse
-- **Export Options** - Save transcripts as plain text, SRT subtitles, or JSON
-- **Multiple ASR Backends** - NVIDIA Parakeet (ONNX) and Sherpa-ONNX Zipformer (streaming)
+- **Private**: Audio processed locally, never uploaded
+- **Fast**: <200ms latency, words appear as you speak
+- **Smart endpointing**: Neural analysis detects sentence completion (inspired by Daily.co VAD 3.1)
+- **Voice commands**: Local LLM (FunctionGemma) executes intents like "Search Wikipedia for..."
+- **Hybrid inference**: Streaming (Sherpa) for instant feedback, batch (Parakeet/Whisper) for accuracy
 
 ## Requirements
 
@@ -82,6 +89,7 @@ gibb.eri.sh uses NVIDIA Parakeet models via ONNX Runtime:
 | Parakeet CTC 0.6B | ~600MB | Higher accuracy, batch processing |
 | Parakeet TDT 1.1B | ~1.1GB | Best accuracy, requires more memory |
 | Sherpa Zipformer (EN) | ~250MB | Low-latency streaming transducer (English) |
+| **NeMo Conformer** | CTC | **Catalan** (Specialized) | ~500MB |
 
 Models are downloaded on first use and cached in `~/Library/Application Support/gibberish/models/`.
 
