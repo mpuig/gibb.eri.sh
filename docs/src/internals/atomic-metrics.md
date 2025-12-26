@@ -1,4 +1,4 @@
-# Lock-Free Metrics
+# Atomic Observability
 
 The audio pipeline updates metrics frequently. Using mutexes would cause contention between the audio thread and UI thread, so we use atomic types instead.
 

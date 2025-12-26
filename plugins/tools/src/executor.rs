@@ -3,14 +3,26 @@
 //! Generic executor that works with any tool through the Tool trait.
 //! Caching and cooldown are driven by tool-provided keys, not hardcoded checks.
 
+use std::sync::Arc;
 use std::time::Instant;
 
+use gibberish_events::event_names;
 use tauri::{Emitter, Runtime};
 
+use crate::environment::RealSystemEnvironment;
 use crate::policy::{CACHE_TTL, CITY_COOLDOWN};
 use crate::registry::ToolRegistry;
 use crate::state::{CacheEntry, ToolsState};
 use crate::tools::{ToolContext, ToolError};
+
+/// How to execute a tool - avoids "Boolean Blindness".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionMode {
+    /// Execute immediately without user approval.
+    AutoRun,
+    /// Emit a proposal for user approval first.
+    RequireApproval,
+}
 
 /// Result of tool execution attempt.
 pub enum ExecutionOutcome {
@@ -40,14 +52,14 @@ pub async fn execute_tool<R: Runtime>(
     tool_name: &str,
     args: &serde_json::Value,
     evidence: &str,
-    auto_run: bool,
+    mode: ExecutionMode,
 ) -> ExecutionOutcome {
     let Some(tool) = registry.get(tool_name) else {
         return ExecutionOutcome::NotFound;
     };
 
     // If not auto-run, emit proposal and return
-    if !auto_run {
+    if mode == ExecutionMode::RequireApproval {
         emit_proposal(app, tool_name, args, evidence);
         return ExecutionOutcome::ProposalEmitted;
     }
@@ -84,16 +96,14 @@ pub async fn execute_tool<R: Runtime>(
         return ExecutionOutcome::CacheHit;
     }
 
-    // Execute the tool
+    // Execute the tool with system environment
     let (client, default_lang) = {
         let guard = state.lock().await;
         (guard.client.clone(), guard.router.default_lang.clone())
     };
 
-    let ctx = ToolContext {
-        client,
-        default_lang,
-    };
+    let env = Arc::new(RealSystemEnvironment::new(client));
+    let ctx = ToolContext::new(env, default_lang);
 
     emit_tool_start(app, tool_name, args);
 
@@ -165,7 +175,7 @@ fn emit_proposal<R: Runtime>(
     evidence: &str,
 ) {
     let _ = app.emit(
-        "tools:action_proposed",
+        event_names::ACTION_PROPOSED,
         serde_json::json!({
             "tool": tool,
             "args": args,
@@ -215,7 +225,7 @@ fn emit_tool_error<R: Runtime>(app: &tauri::AppHandle<R>, tool: &str, error: &st
         }),
     );
     let _ = app.emit(
-        "tools:tool_error",
+        event_names::TOOL_ERROR,
         serde_json::json!({ "tool": tool, "error": error }),
     );
 }
@@ -226,7 +236,7 @@ fn emit_router_status<R: Runtime>(
     payload: serde_json::Value,
 ) {
     let _ = app.emit(
-        "tools:router_status",
+        event_names::ROUTER_STATUS,
         serde_json::json!({
             "phase": phase,
             "ts_ms": chrono::Utc::now().timestamp_millis(),

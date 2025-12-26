@@ -1,15 +1,26 @@
-# Design Principles
+# The Golden Path
 
-gibb.eri.sh is designed around three constraints:
+We hold three core beliefs that drive every line of code in gibb.eri.sh. These aren't just preferences—they're non-negotiables that shape every architectural decision.
 
-1. **[Privacy First](./privacy.md)** — Audio processed locally, never uploaded
-2. **[Low Latency](./latency.md)** — Time-to-first-token < 200ms
-3. **[Rust + Tauri](./stack.md)** — Native performance, minimal runtime overhead
+1. **[Privacy First](./privacy.md)** — Your voice never leaves localhost
+2. **[Zero Latency](./latency.md)** — Transcription must feel instant
+3. **[Rust + Tauri](./stack.md)** — We build for the metal, not the browser
 
-## Trade-offs
+These principles sometimes conflict with "easier" solutions. We choose the harder path because the result is worth it: **AI for your OS that serves you, not a corporation.**
 
-| Constraint | Trade-off |
-|------------|-----------|
-| Local-only processing | Requires ~500MB model download |
-| Low latency | Higher CPU usage for streaming |
-| Native code | Rust learning curve for contributors |
+## The Trade-offs We Accept
+
+| We Sacrifice | We Gain |
+|--------------|---------|
+| Cloud scalability | Absolute privacy |
+| Development speed | Runtime performance |
+| Framework convenience | Memory efficiency |
+| Model variety | Predictable latency |
+
+## The Trade-offs We Reject
+
+- **"Just use OpenAI"** — Privacy is not optional
+- **"Electron is fine"** — RAM is not free
+- **"Good enough latency"** — 500ms feels broken
+
+Read on to understand why each principle matters and how we implement it.

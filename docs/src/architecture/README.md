@@ -27,7 +27,7 @@ Performance of a monolith. Maintainability of services.
 │  ┌─────────────────────────────────────────────────────┐│
 │  │                   crates/                            ││
 │  │  Pure Rust: Zero dependencies on Tauri or UI        ││
-│  │  • audio/  • bus/  • stt/  • vad/  • sherpa/       ││
+│  │  • audio/  • bus/  • context/  • stt/  • vad/       ││
 │  └─────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────┘
 ```

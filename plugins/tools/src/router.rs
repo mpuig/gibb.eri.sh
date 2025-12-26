@@ -3,21 +3,16 @@
 //! Receives transcript commits, runs FunctionGemma inference,
 //! and dispatches tool execution via the registry.
 
-use crate::executor::{execute_tool, ExecutionOutcome};
+use crate::executor::{execute_tool, ExecutionMode, ExecutionOutcome};
 use crate::policy::DEBOUNCE;
 use crate::registry::ToolRegistry;
 use crate::tool_manifest::ToolPolicy;
+use gibberish_context::Mode;
+use gibberish_events::StreamCommitEvent;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{Emitter, Manager, Runtime};
 use tokio_util::sync::CancellationToken;
-
-#[derive(Debug, serde::Deserialize)]
-struct SttStreamCommitPayload {
-    text: String,
-    #[allow(dead_code)]
-    ts_ms: Option<i64>,
-}
 
 fn emit_router_status<R: Runtime>(
     app: &tauri::AppHandle<R>,
@@ -41,10 +36,36 @@ fn policy_for_tool<'a>(
     policies.get(tool)
 }
 
+/// Find the best proposal above confidence threshold.
+fn find_best_proposal<'a>(
+    proposals: &'a [crate::functiongemma::Proposal],
+    policies: &HashMap<String, ToolPolicy>,
+    min_confidence: f32,
+) -> Option<&'a crate::functiongemma::Proposal> {
+    proposals
+        .iter()
+        .filter(|p| p.confidence >= min_confidence)
+        .filter(|p| policies.contains_key(&p.tool))
+        .max_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap_or(std::cmp::Ordering::Equal))
+}
+
+/// Check if a tool is available in the current mode.
+fn is_tool_available_in_mode(
+    registry: &ToolRegistry,
+    tool_name: &str,
+    mode: Mode,
+) -> bool {
+    registry
+        .get(tool_name)
+        .map(|t| t.is_available_in(mode))
+        .unwrap_or(false)
+}
+
 /// Snapshot of router settings for use during processing.
 #[derive(Debug)]
 struct RouterSettingsSnapshot {
     auto_run_read_only: bool,
+    current_mode: Mode,
 }
 
 /// Main router processing loop.
@@ -105,6 +126,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                 guard.router.enabled,
                 RouterSettingsSnapshot {
                     auto_run_read_only: guard.router.auto_run_read_only,
+                    current_mode: guard.context.effective_mode(),
                 },
                 guard.router.functiongemma_developer_context.clone(),
                 guard.router.tool_policies.clone(),
@@ -182,20 +204,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         };
 
         // Find the best proposal above confidence threshold
-        let mut best: Option<&crate::functiongemma::Proposal> = None;
-        for p in &model_out.proposals {
-            if p.confidence < min_confidence {
-                continue;
-            }
-            if policy_for_tool(&tool_policies, &p.tool).is_none() {
-                continue;
-            }
-            if best.map(|b| p.confidence > b.confidence).unwrap_or(true) {
-                best = Some(p);
-            }
-        }
-
-        let Some(proposal) = best else {
+        let Some(proposal) = find_best_proposal(&model_out.proposals, &tool_policies, min_confidence) else {
             continue;
         };
 
@@ -247,9 +256,32 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             }
         }
 
-        // Build registry and execute tool
+        // Build registry and check mode availability
         let registry = ToolRegistry::from_policies(&tool_policies);
-        let auto_run = policy.read_only && router_settings.auto_run_read_only;
+
+        // Guard: skip if tool not available in current mode
+        if !is_tool_available_in_mode(&registry, &proposal.tool, router_settings.current_mode) {
+            tracing::debug!(
+                tool = %proposal.tool,
+                mode = %router_settings.current_mode,
+                "Tool not available in current mode, skipping"
+            );
+            emit_router_status(
+                &app,
+                "tool_mode_filtered",
+                serde_json::json!({
+                    "tool": proposal.tool,
+                    "mode": router_settings.current_mode.to_string()
+                }),
+            );
+            continue;
+        }
+
+        let execution_mode = if policy.read_only && router_settings.auto_run_read_only {
+            ExecutionMode::AutoRun
+        } else {
+            ExecutionMode::RequireApproval
+        };
 
         let outcome = execute_tool(
             &app,
@@ -258,7 +290,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             &proposal.tool,
             &args,
             &proposal.evidence,
-            auto_run,
+            execution_mode,
         )
         .await;
 
@@ -291,7 +323,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
 
 /// Handle incoming STT stream commit events.
 pub fn on_stt_stream_commit<R: Runtime>(app: &tauri::AppHandle<R>, payload_json: &str) {
-    let Ok(payload) = serde_json::from_str::<SttStreamCommitPayload>(payload_json) else {
+    let Ok(payload) = serde_json::from_str::<StreamCommitEvent>(payload_json) else {
         return;
     };
 

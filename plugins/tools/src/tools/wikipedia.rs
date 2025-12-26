@@ -2,6 +2,7 @@
 
 use super::{Tool, ToolContext, ToolError, ToolResult};
 use async_trait::async_trait;
+use serde_json::json;
 
 const DEFAULT_SENTENCES: u8 = 2;
 
@@ -12,6 +13,52 @@ pub struct WikipediaTool;
 impl Tool for WikipediaTool {
     fn name(&self) -> &'static str {
         "wikipedia_city_lookup"
+    }
+
+    fn description(&self) -> &'static str {
+        "Look up city information from Wikipedia"
+    }
+
+    fn example_phrases(&self) -> &'static [&'static str] {
+        &[
+            "tell me about Barcelona",
+            "what is Tokyo",
+            "lookup New York",
+        ]
+    }
+
+    fn args_schema(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "city": {
+                    "type": "string",
+                    "description": "City name only (no extra words)."
+                },
+                "lang": {
+                    "type": "string",
+                    "description": "Wikipedia language code, e.g. en, es, ca.",
+                    "default": "en"
+                },
+                "sentences": {
+                    "type": "integer",
+                    "description": "How many sentences to return (1-10).",
+                    "minimum": 1,
+                    "maximum": 10,
+                    "default": 2
+                }
+            },
+            "required": ["city"]
+        })
+    }
+
+    fn cache_key(&self, args: &serde_json::Value) -> Option<String> {
+        let city = args.get("city")?.as_str()?;
+        let lang = args
+            .get("lang")
+            .and_then(|v| v.as_str())
+            .unwrap_or("en");
+        Some(format!("{}:{}", lang, city.to_lowercase()))
     }
 
     async fn execute(
@@ -40,7 +87,7 @@ impl Tool for WikipediaTool {
             .unwrap_or(DEFAULT_SENTENCES);
 
         let summary =
-            crate::wikipedia::fetch_city_summary_with_client(&ctx.client, &lang, city, sentences)
+            crate::wikipedia::fetch_city_summary_with_client(ctx.client(), &lang, city, sentences)
                 .await?;
 
         // Build cache/cooldown key from lang + normalized city

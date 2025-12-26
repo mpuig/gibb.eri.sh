@@ -3,6 +3,7 @@ import { TranscriptView } from "./components/transcript-view";
 import { Onboarding } from "./components/onboarding";
 import { SettingsSheet } from "./components/settings-sheet";
 import { SessionsSheet } from "./components/sessions-sheet";
+import { ModeBadge } from "./components/mode-badge";
 import { useRecordingStore } from "./stores/recording-store";
 import { useOnboardingStore } from "./stores/onboarding-store";
 import { useRecording } from "./hooks/use-recording";
@@ -41,6 +42,17 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen" style={{ background: "var(--color-bg-primary)" }}>
+      {/* Header with Mode Badge */}
+      <header
+        className="px-4 py-2 flex items-center justify-between"
+        style={{ borderBottom: "1px solid var(--color-border)" }}
+      >
+        <ModeBadge />
+        <div className="text-xs" style={{ color: "var(--color-text-quaternary)" }}>
+          gibberish
+        </div>
+      </header>
+
       {/* Main Content - Transcript */}
       <main className="flex-1 overflow-auto p-6">
         {!currentModel ? (

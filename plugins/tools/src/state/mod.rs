@@ -8,6 +8,8 @@ pub use cache::{CacheEntry, CacheState};
 pub use functiongemma::{FunctionGemmaDownload, FunctionGemmaModel, FunctionGemmaState};
 pub use router::RouterState;
 
+use gibberish_context::ContextState;
+
 /// DTO for Wikipedia summary results.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WikiSummaryDto {
@@ -34,6 +36,7 @@ pub struct ToolsState {
     pub router: RouterState,
     pub functiongemma: FunctionGemmaState,
     pub cache: CacheState,
+    pub context: ContextState,
 }
 
 impl Default for ToolsState {
@@ -43,6 +46,7 @@ impl Default for ToolsState {
             router: RouterState::default(),
             functiongemma: FunctionGemmaState::default(),
             cache: CacheState::default(),
+            context: ContextState::default(),
         }
     }
 }

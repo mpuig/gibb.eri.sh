@@ -47,12 +47,14 @@ Standard VAD only detects *silence*. Smart Turn detects *completion*.
 -   **The Logic:** `if (Silence > 300ms AND Probability(EndOfSentence) > 0.5) -> Commit`.
 
 ### 2.3. Agentic Tools ("Assistant Mode")
-A local LLM (`FunctionGemma`) handles intents without leaking data.
+A local LLM (`FunctionGemma`) handles intents without leaking data. It is **Context-Aware**, meaning it only knows about tools relevant to your current activity.
+
 -   **Flow:**
     1.  User: "Search Wikipedia for Rust."
-    2.  **Router** (Debounced event listener) flags intent.
-    3.  **LLM** parses text -> JSON: `{"tool": "browser", "query": "Rust programming language"}`.
-    4.  **Executor** runs the tool.
+    2.  **Context Engine**: Detects you are in "Dev Mode" (VS Code focused).
+    3.  **Router**: Filters available tools (Git, File Search, Wikipedia).
+    4.  **LLM**: Parses intent -> `{"tool": "wikipedia", ...}`.
+    5.  **Executor**: Runs the tool.
 
 ---
 
@@ -65,6 +67,7 @@ crates/
 ├── application/     # The Body (Orchestration & State Machine)
 ├── audio/           # The Senses (Capture, AGC, Resampling)
 ├── bus/             # The Nervous System (Bounded MPSC Audio Pipeline)
+├── context/         # The Senses (Active App, Mic State, System Context)
 ├── detect/          # Context Awareness (Meeting App Detection)
 ├── diarization/     # Speaker ID (Trait Definitions)
 ├── models/          # The Library (Metadata & Download Registry)
@@ -188,12 +191,21 @@ We use `std::thread` for inference, not `tokio::spawn`.
 
 ---
 
-## 9. OS Integration (Context Awareness)
+## 9. OS Integration (The Context Engine)
 
-### Meeting Detection
-We monitor the OS for active audio sessions from apps like Zoom and Teams using `crates/detect`.
--   **Mechanism:** CoreAudio API inspection.
--   **Value:** Enables "Auto-Record on Meeting Start"—the app becomes a seamless utility.
+We don't just listen to you; we listen to your computer.
+
+### The Context Loop
+The `crates/context` crate polls the OS (via AppleScript or Accessibility APIs) to build a realtime snapshot of your world:
+1.  **Focus:** What app are you using? (VS Code -> **Dev Mode**)
+2.  **Activity:** Is the mic active in Zoom? (Mic On -> **Meeting Mode**)
+3.  **State:** What's in the clipboard?
+
+### Why?
+This enables **Dynamic Tooling**.
+-   In **Dev Mode**, you can say "Undo commit" (`git_voice`).
+-   In **Meeting Mode**, you can say "Flag this" (`transcript_marker`).
+-   The LLM is never confused because irrelevant tools are hidden from its prompt.
 
 ---
 

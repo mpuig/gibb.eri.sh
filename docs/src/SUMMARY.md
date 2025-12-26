@@ -35,10 +35,10 @@
 - [Implementation Details](./internals/README.md)
   - [Simulated Streaming](./internals/simulated-streaming.md)
   - [Silence Injection](./internals/silence-injection.md)
-  - [Lock-Free Metrics](./internals/atomic-metrics.md)
+  - [Atomic Observability](./internals/atomic-metrics.md)
   - [Threading Model](./internals/threading.md)
   - [Audio Hygiene](./internals/audio-hygiene.md)
-  - [Meeting Detection](./internals/meeting-detection.md)
+  - [Context Engine](./internals/context-engine.md)
 
 ---
 

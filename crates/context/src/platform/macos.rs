@@ -148,12 +148,12 @@ mod tests {
     #[test]
     fn test_provider_mic_state() {
         let provider = MacOSProvider::new();
-        assert!(!provider.is_mic_active());
+        assert!(!MicActivityProvider::is_mic_active(&provider));
 
         provider.set_mic_active(true);
-        assert!(provider.is_mic_active());
+        assert!(MicActivityProvider::is_mic_active(&provider));
 
         provider.set_mic_active(false);
-        assert!(!provider.is_mic_active());
+        assert!(!MicActivityProvider::is_mic_active(&provider));
     }
 }

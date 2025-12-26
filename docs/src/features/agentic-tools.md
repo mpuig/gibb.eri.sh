@@ -1,131 +1,118 @@
 # Agentic Tools
 
-A local LLM monitors transcribed text for commands. When it detects an intent, it executes an action.
+gibb.eri.sh doesn't just transcribe—it *understands*. And crucially, it understands *context*.
 
-```
-You say: "Search Wikipedia for Rust programming"
-                    ↓
-            [FunctionGemma LLM]
-                    ↓
-    {"tool": "browser", "query": "Rust programming language"}
-                    ↓
-            [Tool Executor]
-                    ↓
-        Browser opens with Wikipedia results
-```
+## The Concept
+
+A local LLM monitors your speech for **intents**. But unlike dumb assistants, gibb.eri.sh changes its capabilities based on what you are doing.
+
+## Contextual Modes
+
+The available tools change dynamically based on your environment.
+
+### 1. Global Mode (Default)
+Always available.
+- **Tools:** `wikipedia`, `app_launcher`, `system_control`
+- **Example:** "Open Figma", "Turn up the volume", "Search Wikipedia for rust"
+
+### 2. Meeting Mode
+Triggered when: A meeting app (Zoom, Teams, Slack) is using the microphone.
+- **Tools:** `transcript_marker`, `add_todo`
+- **Example:** "Flag this as important", "Add action item for Marc"
+
+### 3. Dev Mode
+Triggered when: An IDE (VS Code, IntelliJ, Terminal) is the active window.
+- **Tools:** `git_voice`, `file_finder`
+- **Example:** "Undo last commit", "Find the user struct"
 
 ## How It Works
 
 ### The Pipeline
 
-1. **STT Commit**: Text is finalized by the transcription engine
-2. **Router**: Lightweight check (regex/heuristics) flags potential intents
-3. **LLM Parse**: FunctionGemma extracts structured data
-4. **Executor**: Runs the appropriate tool
+```
+Context Engine ─▶ [State: Dev Mode]
+                        │
+                        ▼
+User Speech ───▶ [Router] ───▶ Tool Registry (Filter: Dev + Global)
+                                        │
+                                        ▼
+                                [FunctionGemma LLM]
+                                (Only sees ~5 relevant tools)
+                                        │
+                                        ▼
+                                [Executor] ─▶ git_voice
+```
 
 ### Event-Driven Architecture
 
-The Tools plugin listens for `stt:stream_commit` events:
+The Tools plugin listens for `stt:stream_commit` events and combines them with the latest `ContextState`:
 
 ```rust
-// plugins/tools/src/lib.rs
-app.listen_global("stt:stream_commit", move |event| {
-    if let Some(text) = event.payload() {
-        // Debounce to avoid LLM overload during rapid speech
-        router.process(text);
-    }
-});
+// plugins/tools/src/router.rs
+
+// 1. Get current mode (e.g., Dev)
+let mode = state.context.effective_mode();
+
+// 2. Filter registry
+let tools = registry.tools_for_mode(mode);
+
+// 3. Build system prompt with ONLY those tools
+let prompt = build_prompt(tools);
+
+// 4. Run Inference
+let result = llm.infer(prompt, user_text);
 ```
 
-### The Router
+### Why Dynamic Filtering?
 
-Not every sentence needs LLM analysis. The router uses cheap heuristics first:
+1.  **Accuracy:** The LLM isn't confused by "Book a flight" when you're trying to "Book a meeting room". Smaller search space = fewer hallucinations.
+2.  **Performance:** Less text in the system prompt = faster inference.
+3.  **Safety:** Destructive tools (like `git reset`) are only exposed when you are explicitly focusing on your code editor.
 
-```rust
-fn should_analyze(text: &str) -> bool {
-    let triggers = ["search", "open", "find", "look up", "what is"];
-    triggers.iter().any(|t| text.to_lowercase().contains(t))
-}
-```
+## Implicit Referencing ("The Magic Word: This")
 
-If no trigger words are found, we skip the expensive LLM call.
+Because gibb.eri.sh knows your context, you can use **Deictic references**.
 
-### FunctionGemma
+- **User says:** "Summarize *this*."
+- **LLM sees:** `{"tool": "summarize", "source": "active_selection"}`
+- **Context Engine:**
+    1. Checks active app (e.g., Chrome).
+    2. Grabs currently selected text (via Accessibility API).
+    3. Feeds text to the tool.
 
-We use Google's [FunctionGemma](https://huggingface.co/google/functiongemma) model, quantized for efficiency:
+We also support **"what I just said"**:
+- **User says:** "Create a todo from *what I just said*."
+- **System:** Grabs the last 30 seconds of transcript history.
 
-| Property | Value |
-|----------|-------|
-| Size | ~200MB (int8) |
-| Latency | ~100ms |
-| Accuracy | High for simple intents |
-
-The model is trained specifically for function calling, not general chat.
+This allows generic commands to work across any application without specific integrations.
 
 ## Available Tools
 
-### Wikipedia Search
+### Global
+- **System Control**: Volume, Mute, Media keys.
+- **App Launcher**: Opens applications.
+- **Wikipedia**: Knowledge lookups.
 
-```json
-{
-  "tool": "wikipedia",
-  "action": "search",
-  "query": "Rust programming language"
-}
-```
+### Meeting
+- **Transcript Marker**: Inserts `[FLAG]` or `[TODO]` tags into the transcript file.
+- **Add Todo**: Appends a line to your daily notes.
 
-Opens the default browser with Wikipedia search results.
-
-### More Coming Soon
-
-- **Web Search**: General search queries
-- **Calculator**: Math expressions
-- **Timer**: "Set a timer for 5 minutes"
-- **Notes**: "Remember to buy milk"
+### Development
+- **Git Voice**: Wraps common git commands.
+- **File Finder**: Uses `mdfind` (Spotlight) to locate files in the current project context.
 
 ## Adding Custom Tools
 
-Tools are defined in `plugins/tools/src/tools/`:
+Tools are defined in `plugins/tools/src/tools/` and must implement `is_available_in(mode)`:
 
 ```rust
-// tools/my_tool.rs
-pub struct MyTool;
+impl Tool for GitVoiceTool {
+    fn name(&self) -> &'static str { "git_voice" }
 
-impl Tool for MyTool {
-    fn name(&self) -> &str { "my_tool" }
-
-    fn execute(&self, params: &Value) -> Result<String> {
-        // Do something useful
-        Ok("Done!".into())
+    fn modes(&self) -> &'static [Mode] {
+        &[Mode::Dev]
     }
-}
-```
 
-Register it in the tool registry:
-
-```rust
-registry.register(Box::new(MyTool));
-```
-
-## Privacy Considerations
-
-All intent recognition happens **locally**:
-- No cloud API calls
-- No data leaves your device
-- Works offline
-
-The LLM sees only the committed transcript text, never raw audio.
-
-## Debouncing
-
-Rapid speech can generate many commits in quick succession. We debounce to avoid overwhelming the LLM:
-
-```rust
-const DEBOUNCE_MS: u64 = 500;
-
-// Only process if 500ms have passed since last analysis
-if now - last_analysis > DEBOUNCE_MS {
-    router.process(text);
-    last_analysis = now;
+    // ...
 }
 ```

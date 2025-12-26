@@ -3,17 +3,61 @@
 //! Tools are adapters that execute specific actions (e.g., Wikipedia lookups).
 //! Each tool implements the `Tool` trait and is registered in the `ToolRegistry`.
 
+mod add_todo;
+mod app_launcher;
+mod file_finder;
+mod git_voice;
+mod help;
+mod system_control;
+mod transcript_marker;
 mod wikipedia;
 
+pub use add_todo::AddTodoTool;
+pub use app_launcher::AppLauncherTool;
+pub use file_finder::FileFinderTool;
+pub use git_voice::GitVoiceTool;
+pub use help::{HelpTool, ToolInfo, ToolInfoProvider};
+// Re-export ToolDefinition for dynamic manifest building
+pub use self::ToolDefinition as ToolDef;
+pub use system_control::SystemControlTool;
+pub use transcript_marker::TranscriptMarkerTool;
 pub use wikipedia::WikipediaTool;
 
 use async_trait::async_trait;
+use gibberish_context::Mode;
+use std::sync::Arc;
+
+use crate::environment::SystemEnvironment;
+
+/// JSON schema definition for a tool, used to build dynamic manifests.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ToolDefinition {
+    pub name: String,
+    pub description: String,
+    pub read_only: bool,
+    pub args_schema: serde_json::Value,
+}
 
 /// Context passed to tool execution.
-#[derive(Clone)]
+///
+/// Contains the system environment abstraction for testability.
 pub struct ToolContext {
-    pub client: reqwest::Client,
+    /// System environment for OS operations.
+    pub env: Arc<dyn SystemEnvironment>,
+    /// Default language for tools that support i18n.
     pub default_lang: String,
+}
+
+impl ToolContext {
+    /// Create a new context with the given environment.
+    pub fn new(env: Arc<dyn SystemEnvironment>, default_lang: String) -> Self {
+        Self { env, default_lang }
+    }
+
+    /// Get the HTTP client from the environment.
+    pub fn client(&self) -> &reqwest::Client {
+        self.env.http_client()
+    }
 }
 
 /// Result of tool execution.
@@ -68,6 +112,65 @@ impl From<crate::wikipedia::WikipediaError> for ToolError {
 pub trait Tool: Send + Sync {
     /// Tool name (matches the manifest name).
     fn name(&self) -> &'static str;
+
+    /// Human-readable description of what the tool does.
+    fn description(&self) -> &'static str {
+        ""
+    }
+
+    /// Example voice phrases that trigger this tool.
+    fn example_phrases(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Modes in which this tool is available.
+    /// Return empty slice for tools that are always available (Global mode).
+    /// Return specific modes for context-filtered tools.
+    fn modes(&self) -> &'static [Mode] {
+        // Default: available in all modes (Global)
+        &[]
+    }
+
+    /// Check if this tool is available in the given mode.
+    fn is_available_in(&self, mode: Mode) -> bool {
+        let modes = self.modes();
+        // Empty modes means available everywhere
+        if modes.is_empty() {
+            return true;
+        }
+        // Check if current mode is in the list
+        modes.contains(&mode)
+    }
+
+    /// Whether this tool is read-only (no side effects).
+    fn is_read_only(&self) -> bool {
+        true
+    }
+
+    /// JSON schema for the tool's arguments.
+    fn args_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        })
+    }
+
+    /// Build the tool definition for the dynamic manifest.
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: self.name().to_string(),
+            description: self.description().to_string(),
+            read_only: self.is_read_only(),
+            args_schema: self.args_schema(),
+        }
+    }
+
+    /// Generate a cache key for the given arguments.
+    /// Returns None if caching is not supported for this tool.
+    fn cache_key(&self, _args: &serde_json::Value) -> Option<String> {
+        None
+    }
 
     /// Execute the tool with given arguments.
     async fn execute(

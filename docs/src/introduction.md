@@ -6,11 +6,13 @@ Technical documentation for gibb.eri.sh, a local-first voice assistant built wit
 
 ## What is gibb.eri.sh?
 
-gibb.eri.sh is a desktop application that transcribes speech to text in real-time, entirely on your device. No internet connection required. No data leaves your machine.
+gibb.eri.sh is a **Context-Aware Voice OS** for your desktop.
 
-### Features
+It doesn't just transcribe speech; it understands your environment (what app is focused, if you're in a meeting) and executes relevant actions locally.
 
-- Voice processed locally, never uploaded
+### Key Features
+
+- **Context Aware** — It knows if you're coding (VS Code) or meeting (Zoom) and adapts.
 - ~45ms response time
 - English, Catalan, and 99+ languages via Whisper
 - Detects when you've finished speaking, not just when you stop

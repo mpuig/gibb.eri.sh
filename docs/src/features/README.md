@@ -27,6 +27,14 @@ A local LLM understands your intent and executes actions.
 - Runs entirely offline
 - Extensible tool system
 
+### Context Engine
+
+The system knows what you are doing.
+
+- **Dev Mode**: Coding in VS Code? Git tools are enabled.
+- **Meeting Mode**: In a Zoom call? Transcription tools are enabled.
+- **Implicit Context**: "Summarize *this*" works on your current selection.
+
 ## Feature Matrix
 
 | Feature | Streaming | Batch | Notes |

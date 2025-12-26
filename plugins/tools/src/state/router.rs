@@ -6,7 +6,9 @@ use std::time::Instant;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
+use crate::registry::ToolRegistry;
 use crate::tool_manifest::ToolPolicy;
+use gibberish_context::Mode;
 
 /// State for the action router.
 pub struct RouterState {
@@ -39,50 +41,59 @@ impl std::fmt::Debug for RouterState {
     }
 }
 
+impl RouterState {
+    /// Update the manifest and instructions for a new mode.
+    pub fn update_for_mode(&mut self, mode: Mode) {
+        let registry = ToolRegistry::build_all();
+
+        // Build dynamic manifest
+        let manifest_json = registry.manifest_json_for_mode(mode);
+        self.tool_manifest = Arc::from(manifest_json.clone());
+
+        // Build dynamic policies
+        let policies = registry.policies_for_mode(mode);
+        self.tool_policies = Arc::new(policies);
+
+        // Build dynamic instructions
+        let instructions = registry.functiongemma_instructions_for_mode(mode);
+        self.functiongemma_instructions = Arc::from(instructions.clone());
+
+        // Build dynamic declarations
+        let declarations = registry.functiongemma_declarations_for_mode(mode);
+        self.functiongemma_declarations = Arc::from(declarations.clone());
+
+        // Rebuild developer context
+        self.functiongemma_developer_context = Arc::from(format!(
+            "You are a model that can do function calling with the following functions\n{}\n{}",
+            instructions, declarations
+        ));
+
+        tracing::debug!(
+            mode = %mode,
+            tool_count = self.tool_policies.len(),
+            "Updated router manifest for mode"
+        );
+    }
+}
+
 impl Default for RouterState {
     fn default() -> Self {
-        let tool_manifest: Arc<str> = Arc::from(
-            r#"{
-  "tools": [
-    {
-      "name": "wikipedia_city_lookup",
-      "description": "Lookup a city on Wikipedia and return a short summary and URL.",
-      "read_only": true,
-      "args_schema": {
-        "type": "object",
-        "properties": {
-          "city": { "type": "string", "description": "City name only (no extra words)." },
-          "lang": { "type": "string", "description": "Wikipedia language code, e.g. en, es, ca.", "default": "en" },
-          "sentences": { "type": "integer", "description": "How many sentences to return (1-10).", "minimum": 1, "maximum": 10, "default": 2 }
-        },
-        "required": ["city"]
-      }
-    }
-  ]
-}"#
-                .to_string(),
-        );
+        // Build with Global mode by default
+        let registry = ToolRegistry::build_all();
+        let mode = Mode::Global;
 
-        let compiled =
-            crate::tool_manifest::validate_and_compile(&tool_manifest).unwrap_or_default();
-        let tool_policies: Arc<HashMap<String, ToolPolicy>> = Arc::new(compiled.policies);
+        let tool_manifest: Arc<str> = Arc::from(registry.manifest_json_for_mode(mode));
 
-        let functiongemma_instructions: Arc<str> = Arc::from(
-            "You are an action router that reads live transcript commits.\n\
-You do not chat. You never write natural language.\n\
-\n\
-CRITICAL RULES:\n\
-1. ONLY call wikipedia_city_lookup if a city name appears VERBATIM in the user text.\n\
-2. The city argument must be COPIED EXACTLY from the user text.\n\
-3. If NO city name appears in the text, output <end_of_turn> immediately.\n\
-4. Generic words like 'city', 'town', 'place' are NOT city names.\n\
-\n\
-Format: <start_function_call>call:wikipedia_city_lookup{city:<escape>CITY_FROM_TEXT<escape>}<end_function_call>\n"
-                .to_string(),
-        );
-        let functiongemma_declarations: Arc<str> = Arc::from(compiled.function_declarations);
+        let tool_policies: Arc<HashMap<String, ToolPolicy>> =
+            Arc::new(registry.policies_for_mode(mode));
+
+        let functiongemma_instructions: Arc<str> =
+            Arc::from(registry.functiongemma_instructions_for_mode(mode));
+        let functiongemma_declarations: Arc<str> =
+            Arc::from(registry.functiongemma_declarations_for_mode(mode));
         let functiongemma_developer_context: Arc<str> = Arc::from(format!(
-            "You are a model that can do function calling with the following functions\n{functiongemma_instructions}\n{functiongemma_declarations}"
+            "You are a model that can do function calling with the following functions\n{}\n{}",
+            functiongemma_instructions, functiongemma_declarations
         ));
 
         Self {

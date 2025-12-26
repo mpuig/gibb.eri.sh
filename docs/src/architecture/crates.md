@@ -26,23 +26,25 @@ crates/
 
 ### `gibberish-bus`
 
-Delivers audio from recorder to consumers (VAD, STT, visualizer).
+The nervous system. Delivers audio from recorder to consumers.
 
 ```rust
 pub struct AudioChunk {
     pub seq: u64,           // Sequence number
     pub ts_ms: i64,         // Timestamp
     pub sample_rate: u32,   // Always 16000
-    pub samples: Arc<[f32]>, // Shared audio data
+    pub samples: Arc<[f32]>, // Zero-copy audio data
 }
-
-pub struct AudioBus {
-    tx: mpsc::Sender<AudioChunk>,
-    // ...
-}
+// ...
 ```
 
-**Key feature**: `Arc<[f32]>` means audio is allocated once and shared across all consumers.
+### `gibberish-context`
+
+The senses. Aggregates system state to drive the Context Engine.
+
+- **Active App**: Which window has focus?
+- **Mic State**: Is a meeting app using the hardware?
+- **Mode**: Derives high-level intent (`Dev`, `Meeting`, `Global`).
 
 ### `gibberish-stt`
 

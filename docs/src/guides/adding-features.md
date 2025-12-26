@@ -228,6 +228,23 @@ function WordCountDisplay() {
 }
 ```
 
+## Testing Tips
+
+### Dependency Injection
+Don't use `std::process::Command` directly. Use the `SystemEnvironment` trait so you can mock OS calls.
+
+```rust
+// Good
+fn execute(&self, env: &dyn SystemEnvironment) {
+    env.execute_command("git", &["status"])
+}
+
+// Bad
+fn execute(&self) {
+    std::process::Command::new("git").arg("status")
+}
+```
+
 ## Checklist
 
 Before submitting a PR:
