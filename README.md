@@ -1,8 +1,11 @@
-# gibb.eri.sh
+# gibb.eri.sh // Local Voice OS
 
-Local-first speech-to-text built with Rust and Tauri v2.
+**Your Mac, but it listens.**
 
-Runs entirely on your device. Audio never leaves localhost.
+gibb.eri.sh is a **context-aware Voice OS** that runs entirely on `localhost`.
+It doesn't just transcribe; it sees what you're doing (coding, meeting, browsing) and executes relevant actions locally.
+
+Zero-cloud. Zero-latency. 100% Rust.
 
 ## Why?
 
@@ -13,8 +16,9 @@ It uses a zero-copy audio bus to stream microphone data directly to local AI mod
 ## Features
 
 - **Private**: Audio processed locally, never uploaded
-- **Fast**: <200ms latency, words appear as you speak
-- **Smart endpointing**: Neural analysis detects sentence completion (inspired by Daily.co VAD 3.1)
+- **⚡️ Zero-Latency:** Words appear char-by-char as you speak (<200ms lag).
+- **🧠 Context Engine:** Detects your active app (VS Code, Zoom) to enable relevant tools automatically.
+- **🧠 Smart Turn Detection:** Uses semantic analysis (powered by **Daily.co VAD 3.1** logic) to know exactly when you've finished a sentence.
 - **Voice commands**: Local LLM (FunctionGemma) executes intents like "Search Wikipedia for..."
 - **Context-aware modes**: Tools filtered by mode (Global, Dev, Meeting) before LLM inference
 - **Hybrid inference**: Streaming (Sherpa) for instant feedback, batch (Parakeet/Whisper) for accuracy

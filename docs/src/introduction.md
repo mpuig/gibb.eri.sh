@@ -42,6 +42,7 @@ The architecture is efficient enough for lower-end hardware with smaller modelsâ
 
 ## Who is this for?
 
+- **Power Users** who want a programmable, voice-controlled OS layer
 - **Users** who want private, fast transcription
 - **Developers** who want to understand how to build local-first AI
 - **Contributors** who want to extend gibb.eri.sh
