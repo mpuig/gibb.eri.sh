@@ -2,6 +2,37 @@
 
 All notable changes to the **Gibberish** project will be documented in this file.
 
+## [0.7.0] - The "Context-Aware Voice OS" Release
+**Date:** 2025-12-26
+
+A major architectural upgrade adding context-aware tool dispatch and Clean Architecture principles.
+
+### 🚀 Features
+- **Dynamic Tool Registry:** Tools filtered by mode *before* LLM inference. The manifest is built dynamically based on current context (Global, Dev, Meeting).
+- **Mode-Specific Tools:**
+  - **Global:** `wikipedia_city_lookup`, `system_control` (volume/mute/sleep), `app_launcher`
+  - **Dev:** `git_voice` (async git commands), `file_finder` (Spotlight search)
+  - **Meeting:** `add_todo` (Apple Reminders), `transcript_marker`
+- **Mode Badge UI:** New frontend component shows current mode with pin/unpin support.
+- **Context Polling:** Background thread detects active app and mic state to auto-switch modes.
+
+### 🏗 Architecture (Clean Code)
+- **SystemEnvironment Trait:** Abstracts OS calls for testability. Tools no longer directly call `std::process::Command`.
+- **Shared Events Crate:** `gibberish-events` defines cross-plugin DTOs to prevent runtime deserialization errors.
+- **ExecutionMode Enum:** Replaces boolean `auto_run` parameter to eliminate "Boolean Blindness".
+- **Event Constants:** Magic strings replaced with constants (`event_names::CONTEXT_CHANGED`).
+- **Guard Clauses:** Flattened nested conditionals in router for readability.
+- **Helper Functions:** Extracted `find_best_proposal()`, `is_tool_available_in_mode()` to reduce cognitive load.
+
+### ⚡️ Performance
+- **Async I/O:** `GitVoiceTool` now uses `tokio::process::Command` instead of blocking `std::process::Command`.
+- **No Blocking on Async Runtime:** All subprocess calls are non-blocking.
+
+### 🔒 Security
+- **cwd Safety Check:** `GitVoiceTool` validates that working directory is under `$HOME` to prevent path traversal.
+
+---
+
 ## [0.6.0] - The "Less is More" Release
 **Date:** 2025-12-25
 

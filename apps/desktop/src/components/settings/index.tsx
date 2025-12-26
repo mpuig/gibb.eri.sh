@@ -2,6 +2,7 @@ import { SpeechModelsSection } from "./speech-models-section";
 import { SmartTurnSection } from "./smart-turn-section";
 import { FunctionGemmaSection } from "./functiongemma-section";
 import { ActionsSection } from "./actions-section";
+import { ModeSettingsSection } from "./mode-settings-section";
 import { StorageSection } from "./storage-section";
 import { AboutSection } from "./about-section";
 
@@ -12,6 +13,7 @@ export function Settings() {
       <SmartTurnSection />
       <FunctionGemmaSection />
       <ActionsSection />
+      <ModeSettingsSection />
       <StorageSection />
       <AboutSection />
     </div>

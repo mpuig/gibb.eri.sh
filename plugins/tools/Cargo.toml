@@ -21,8 +21,8 @@ tokenizers = "0.22"
 chrono.workspace = true
 futures.workspace = true
 gibberish-context.workspace = true
-gibberish-events = { path = "../../crates/events" }
-tokio-util = "0.7"
+gibberish-events.workspace = true
+tokio-util.workspace = true
 half = "2"
-async-trait = "0.1"
+async-trait.workspace = true
 dirs.workspace = true

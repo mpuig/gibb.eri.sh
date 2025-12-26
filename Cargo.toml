@@ -7,7 +7,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.7.0"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/mpuig/gibb.eri.sh"
@@ -27,16 +27,22 @@ cpal = "0.15"
 dasp = { version = "0.11", features = ["interpolate", "interpolate-linear", "signal"] }
 hound = "3.5"
 ringbuf = "0.4"
+rubato = "0.16"
 
 # macOS native APIs
 cidre = "0.11.4"
+core-foundation = "0.9"
+core-graphics = "0.23"
+objc = "0.2"
 
 # System info
 sysinfo = "0.32"
 plist = "1.7"
+arboard = "3.4"
 
 # STT
 whisper-rs = "0.12"
+tokenizers = "0.22"
 
 # Parakeet (ONNX-based, cross-platform)
 gibberish-parakeet = { path = "crates/parakeet" }
@@ -49,8 +55,10 @@ silero = { git = "https://github.com/emotechlab/silero-rs", rev = "26a6460" }
 
 # Async
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+tokio-util = "0.7"
 futures = "0.3"
 async-stream = "0.3"
+async-trait = "0.1"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -89,6 +97,7 @@ gibberish-turn = { path = "crates/turn" }
 gibberish-smart-turn = { path = "crates/smart-turn" }
 gibberish-bus = { path = "crates/bus" }
 gibberish-context = { path = "crates/context" }
+gibberish-events = { path = "crates/events" }
 
 # Internal plugins
 tauri-plugin-gibberish-tray = { path = "plugins/tray" }

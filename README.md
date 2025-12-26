@@ -16,6 +16,7 @@ It uses a zero-copy audio bus to stream microphone data directly to local AI mod
 - **Fast**: <200ms latency, words appear as you speak
 - **Smart endpointing**: Neural analysis detects sentence completion (inspired by Daily.co VAD 3.1)
 - **Voice commands**: Local LLM (FunctionGemma) executes intents like "Search Wikipedia for..."
+- **Context-aware modes**: Tools filtered by mode (Global, Dev, Meeting) before LLM inference
 - **Hybrid inference**: Streaming (Sherpa) for instant feedback, batch (Parakeet/Whisper) for accuracy
 
 ## Requirements
@@ -49,7 +50,9 @@ gibb.eri.sh/
 │       └── src-tauri/    # Tauri app configuration
 ├── crates/
 │   ├── audio/            # Audio capture and processing
+│   ├── context/          # Context detection (active app, mode)
 │   ├── diarization/      # Speaker diarization
+│   ├── events/           # Shared event DTOs across plugins
 │   ├── models/           # Model management and downloads
 │   ├── parakeet/         # ONNX-based STT engine (Parakeet)
 │   ├── sherpa/           # Sherpa-ONNX STT engine (Zipformer transducer)
@@ -61,6 +64,7 @@ gibb.eri.sh/
     ├── permissions/      # macOS permission handling
     ├── recorder/         # Audio recording plugin
     ├── stt-worker/       # STT processing plugin
+    ├── tools/            # Voice command tools and router
     └── tray/             # Menu bar integration
 ```
 
