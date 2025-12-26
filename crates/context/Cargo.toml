@@ -1,0 +1,21 @@
+[package]
+name = "gibberish-context"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tracing.workspace = true
+serde = { workspace = true, features = ["derive"] }
+chrono.workspace = true
+
+# Re-export detect crate for mic status
+gibberish-detect = { path = "../detect" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# For active window detection via Accessibility APIs
+core-foundation = "0.9"
+core-graphics = "0.23"
+objc = "0.2"
+
+[dev-dependencies]
+tracing-subscriber = { workspace = true }

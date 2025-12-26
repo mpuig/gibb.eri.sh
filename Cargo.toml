@@ -88,6 +88,7 @@ gibberish-sherpa = { path = "crates/sherpa" }
 gibberish-turn = { path = "crates/turn" }
 gibberish-smart-turn = { path = "crates/smart-turn" }
 gibberish-bus = { path = "crates/bus" }
+gibberish-context = { path = "crates/context" }
 
 # Internal plugins
 tauri-plugin-gibberish-tray = { path = "plugins/tray" }
