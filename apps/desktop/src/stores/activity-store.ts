@@ -10,6 +10,9 @@ interface ActivityState {
   filter: ActivityFilter;
   searchQuery: string;
 
+  // Tracks the current voice command awaiting tool result (for threading)
+  pendingVoiceCommandId: string | null;
+
   // Mutations
   addActivity: (activity: Activity) => void;
   updateActivity: (id: string, updates: Partial<Activity>) => void;
@@ -19,12 +22,14 @@ interface ActivityState {
   setFilter: (filter: ActivityFilter) => void;
   setSearchQuery: (query: string) => void;
   toggleExpanded: (id: string) => void;
+  setPendingVoiceCommand: (id: string | null) => void;
 
   // Queries (computed from state)
   getFilteredActivities: () => Activity[];
   getRecentTranscripts: (seconds: number) => Activity[];
   getChildActivities: (parentId: string) => Activity[];
   findActivityById: (id: string) => Activity | undefined;
+  getPendingVoiceCommandId: () => string | null;
 }
 
 const MAX_ACTIVITIES = 500;
@@ -33,6 +38,7 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
   activities: [],
   filter: "all",
   searchQuery: "",
+  pendingVoiceCommandId: null,
 
   addActivity: (activity) =>
     set((state) => {
@@ -71,6 +77,8 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
         a.id === id ? { ...a, expanded: !a.expanded } : a
       ),
     })),
+
+  setPendingVoiceCommand: (id) => set({ pendingVoiceCommandId: id }),
 
   getFilteredActivities: () => {
     const { activities, filter, searchQuery } = get();
@@ -120,6 +128,8 @@ export const useActivityStore = create<ActivityState>((set, get) => ({
     const { activities } = get();
     return activities.find((a) => a.id === id);
   },
+
+  getPendingVoiceCommandId: () => get().pendingVoiceCommandId,
 }));
 
 // Helper to generate unique IDs

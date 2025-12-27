@@ -11,6 +11,7 @@ import {
 } from "../stores/activity-store";
 import { useContextStore } from "../stores/context-store";
 
+// Event payload types (could be moved to a shared types file)
 interface StreamCommitEvent {
   text: string;
   ts_ms: number;
@@ -36,12 +37,11 @@ interface ContextChangedEvent {
   timestamp_ms: number;
 }
 
-// Track active voice command for linking tool results
-let activeVoiceCommandId: string | null = null;
-
 export function useActivityEvents() {
   const addActivity = useActivityStore((s) => s.addActivity);
   const updateActivityStatus = useActivityStore((s) => s.updateActivityStatus);
+  const setPendingVoiceCommand = useActivityStore((s) => s.setPendingVoiceCommand);
+  const getPendingVoiceCommandId = useActivityStore((s) => s.getPendingVoiceCommandId);
   const lastModeRef = useRef<string | null>(null);
   const recordingStartRef = useRef<number | null>(null);
 
@@ -77,49 +77,44 @@ export function useActivityEvents() {
               const text = payload.evidence || payload.text || "";
               const tool = payload.tool || "unknown";
               const activity = createVoiceCommandActivity(text, tool, payload.args);
-              activeVoiceCommandId = activity.id;
+              setPendingVoiceCommand(activity.id);
               addActivity(activity);
               break;
             }
             case "tool_result": {
               // Create tool result activity linked to voice command
-              if (activeVoiceCommandId) {
+              const pendingId = getPendingVoiceCommandId();
+              if (pendingId) {
                 const tool = payload.tool || "unknown";
                 const result = payload.result || {};
-                const activity = createToolResultActivity(
-                  activeVoiceCommandId,
-                  tool,
-                  result
-                );
+                const activity = createToolResultActivity(pendingId, tool, result);
                 addActivity(activity);
                 // Mark parent voice command as completed
-                updateActivityStatus(activeVoiceCommandId, "completed");
-                activeVoiceCommandId = null;
+                updateActivityStatus(pendingId, "completed");
+                setPendingVoiceCommand(null);
               }
               break;
             }
             case "tool_error": {
               // Create tool error activity linked to voice command
-              if (activeVoiceCommandId) {
+              const pendingId = getPendingVoiceCommandId();
+              if (pendingId) {
                 const tool = payload.tool || "unknown";
                 const error = payload.error || "Unknown error";
-                const activity = createToolErrorActivity(
-                  activeVoiceCommandId,
-                  tool,
-                  error
-                );
+                const activity = createToolErrorActivity(pendingId, tool, error);
                 addActivity(activity);
                 // Mark parent voice command as error
-                updateActivityStatus(activeVoiceCommandId, "error");
-                activeVoiceCommandId = null;
+                updateActivityStatus(pendingId, "error");
+                setPendingVoiceCommand(null);
               }
               break;
             }
             case "no_match": {
               // Clear active voice command on no match
-              if (activeVoiceCommandId) {
-                updateActivityStatus(activeVoiceCommandId, "completed");
-                activeVoiceCommandId = null;
+              const pendingId = getPendingVoiceCommandId();
+              if (pendingId) {
+                updateActivityStatus(pendingId, "completed");
+                setPendingVoiceCommand(null);
               }
               break;
             }
@@ -134,15 +129,12 @@ export function useActivityEvents() {
         (event) => {
           if (!mounted) return;
           const { tool, error } = event.payload;
-          if (activeVoiceCommandId) {
-            const activity = createToolErrorActivity(
-              activeVoiceCommandId,
-              tool,
-              error
-            );
+          const pendingId = getPendingVoiceCommandId();
+          if (pendingId) {
+            const activity = createToolErrorActivity(pendingId, tool, error);
             addActivity(activity);
-            updateActivityStatus(activeVoiceCommandId, "error");
-            activeVoiceCommandId = null;
+            updateActivityStatus(pendingId, "error");
+            setPendingVoiceCommand(null);
           }
         }
       );
@@ -204,5 +196,5 @@ export function useActivityEvents() {
       mounted = false;
       unlisteners.forEach((fn) => fn());
     };
-  }, [addActivity, updateActivityStatus]);
+  }, [addActivity, updateActivityStatus, setPendingVoiceCommand, getPendingVoiceCommandId]);
 }
