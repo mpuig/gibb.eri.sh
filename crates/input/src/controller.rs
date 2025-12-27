@@ -11,6 +11,19 @@ use std::time::Duration;
 /// Default delay between keystrokes (10ms).
 pub const DEFAULT_TYPING_DELAY_MS: u64 = 10;
 
+/// Threshold for auto-switching to paste mode (characters).
+/// Text longer than this will use clipboard paste instead of typing.
+pub const SMART_PASTE_THRESHOLD: usize = 50;
+
+/// Bundle IDs of apps that prefer paste over typing (slow text fields).
+pub const PREFER_PASTE_APPS: &[&str] = &[
+    "com.microsoft.Word",
+    "com.microsoft.Outlook",
+    "com.microsoft.Excel",
+    "com.microsoft.PowerPoint",
+    "com.google.Chrome", // Some web apps have slow text fields
+];
+
 /// Options for text typing.
 #[derive(Debug, Clone)]
 pub struct TypeOptions {
@@ -20,6 +33,10 @@ pub struct TypeOptions {
     pub verify_focus: bool,
     /// Whether to run in preview mode (don't actually type).
     pub preview: bool,
+    /// Use smart mode: auto-select paste vs type based on text length and app.
+    pub smart_mode: bool,
+    /// Active app bundle ID (for smart mode app detection).
+    pub active_app: Option<String>,
 }
 
 impl Default for TypeOptions {
@@ -28,6 +45,8 @@ impl Default for TypeOptions {
             delay_ms: DEFAULT_TYPING_DELAY_MS,
             verify_focus: true,
             preview: false,
+            smart_mode: true, // Enable smart mode by default
+            active_app: None,
         }
     }
 }
@@ -41,6 +60,8 @@ pub struct TypeResult {
     pub completed: bool,
     /// If preview mode, the text that would have been typed.
     pub preview_text: Option<String>,
+    /// Whether paste was used instead of typing (smart mode).
+    pub used_paste: bool,
 }
 
 /// Controller for input emulation.
@@ -101,10 +122,16 @@ impl InputController {
     ///
     /// This is a synchronous operation that blocks the calling thread.
     ///
+    /// In smart mode, this will automatically use clipboard paste for:
+    /// - Text longer than SMART_PASTE_THRESHOLD (50 chars)
+    /// - Apps in PREFER_PASTE_APPS (Word, Outlook, etc.)
+    ///
+    /// When using paste, the original clipboard content is restored after.
+    ///
     /// # Arguments
     ///
     /// * `text` - The text to type.
-    /// * `options` - Typing options (delay, focus verification, preview).
+    /// * `options` - Typing options (delay, focus verification, preview, smart_mode).
     ///
     /// # Returns
     ///
@@ -126,9 +153,70 @@ impl InputController {
                 chars_typed: 0,
                 completed: true,
                 preview_text: Some(text.to_string()),
+                used_paste: false,
             });
         }
 
+        // Determine if we should use paste (smart mode)
+        let use_paste = options.smart_mode && should_use_paste(text, options.active_app.as_deref());
+
+        if use_paste {
+            return self.type_via_paste(text);
+        }
+
+        // Standard character-by-character typing
+        self.type_chars(text, &options)
+    }
+
+    /// Type text using clipboard paste with original clipboard restoration.
+    fn type_via_paste(&mut self, text: &str) -> Result<TypeResult, InputError> {
+        // Check abort flag
+        if self.abort_flag.load(Ordering::SeqCst) {
+            return Err(InputError::Aborted);
+        }
+
+        // Save original clipboard content
+        let mut clipboard = arboard::Clipboard::new()
+            .map_err(|e| InputError::TypeFailed(format!("Clipboard init failed: {}", e)))?;
+        let original_text = clipboard.get_text().ok();
+
+        // Set new text to clipboard
+        clipboard
+            .set_text(text)
+            .map_err(|e| InputError::TypeFailed(format!("Clipboard set failed: {}", e)))?;
+
+        // Small delay to ensure clipboard is ready
+        thread::sleep(Duration::from_millis(20));
+
+        // Perform paste
+        self.paste()?;
+
+        // Small delay to let paste complete before restoring
+        thread::sleep(Duration::from_millis(50));
+
+        // Restore original clipboard content
+        if let Some(original) = original_text {
+            let _ = clipboard.set_text(original);
+        } else {
+            // Clear clipboard if it was empty before
+            let _ = clipboard.clear();
+        }
+
+        tracing::debug!(
+            chars = text.len(),
+            "Used paste-to-type with clipboard restore"
+        );
+
+        Ok(TypeResult {
+            chars_typed: text.len(),
+            completed: true,
+            preview_text: None,
+            used_paste: true,
+        })
+    }
+
+    /// Type text character by character.
+    fn type_chars(&mut self, text: &str, options: &TypeOptions) -> Result<TypeResult, InputError> {
         // Get initial focus for verification (only if we have a checker and verify_focus is true)
         let initial_focus = if options.verify_focus {
             self.focus_checker
@@ -178,6 +266,7 @@ impl InputController {
             chars_typed,
             completed: true,
             preview_text: None,
+            used_paste: false,
         })
     }
 
@@ -191,9 +280,12 @@ impl InputController {
                 delay_ms,
                 verify_focus: false,
                 preview: false,
+                smart_mode: true,
+                active_app: None,
             },
         )
     }
+
 
     /// Simulate a paste operation (Cmd+V on macOS, Ctrl+V elsewhere).
     ///
@@ -231,6 +323,33 @@ impl InputController {
 
         Ok(())
     }
+}
+
+/// Determine if we should use paste instead of typing.
+///
+/// Returns true if:
+/// - Text length exceeds SMART_PASTE_THRESHOLD, OR
+/// - Active app is in PREFER_PASTE_APPS list
+fn should_use_paste(text: &str, active_app: Option<&str>) -> bool {
+    // Check text length threshold
+    if text.len() > SMART_PASTE_THRESHOLD {
+        tracing::debug!(
+            chars = text.len(),
+            threshold = SMART_PASTE_THRESHOLD,
+            "Using paste due to text length"
+        );
+        return true;
+    }
+
+    // Check app preference
+    if let Some(app) = active_app {
+        if PREFER_PASTE_APPS.iter().any(|&p| app == p) {
+            tracing::debug!(app, "Using paste due to app preference");
+            return true;
+        }
+    }
+
+    false
 }
 
 impl std::fmt::Debug for InputController {

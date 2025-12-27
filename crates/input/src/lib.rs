@@ -29,7 +29,9 @@ mod macos;
 
 use std::sync::Arc;
 
-pub use controller::{InputController, TypeOptions, TypeResult};
+pub use controller::{
+    InputController, TypeOptions, TypeResult, PREFER_PASTE_APPS, SMART_PASTE_THRESHOLD,
+};
 pub use error::InputError;
 pub use panic_hotkey::{start_panic_hotkey_listener, PanicHotkeyHandle};
 
