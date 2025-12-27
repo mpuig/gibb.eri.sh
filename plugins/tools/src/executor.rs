@@ -102,7 +102,7 @@ pub async fn execute_tool(
     // Return cached result if found
     if let Some((cached_payload, event_name)) = check_result {
         event_bus.emit(event_name, cached_payload.clone());
-        emit_tool_done(&*event_bus, tool_name, true);
+        emit_tool_done(&*event_bus, tool_name, true, &cached_payload);
         return ExecutionOutcome::CacheHit(cached_payload);
     }
 
@@ -138,7 +138,7 @@ pub async fn execute_tool(
         }
     };
 
-    emit_tool_start(&*event_bus, tool_name, &resolved_args);
+    emit_tool_start(&*event_bus, tool_name, &resolved_args, evidence);
 
     match tool.execute(&resolved_args, &ctx).await {
         Ok(result) => {
@@ -166,7 +166,7 @@ pub async fn execute_tool(
 
             // Emit the result using tool-provided event name and payload
             event_bus.emit(result.event_name, result.payload.clone());
-            emit_tool_done(&*event_bus, tool_name, false);
+            emit_tool_done(&*event_bus, tool_name, false, &result.payload);
             ExecutionOutcome::Executed(result.payload)
         }
         Err(e) => {
@@ -220,24 +220,26 @@ fn emit_proposal(
     );
 }
 
-fn emit_tool_start(event_bus: &dyn EventBus, tool: &str, args: &serde_json::Value) {
+fn emit_tool_start(event_bus: &dyn EventBus, tool: &str, args: &serde_json::Value, evidence: &str) {
     emit_router_status(
         event_bus,
         "tool_start",
         serde_json::json!({
             "tool": tool,
             "args": args,
+            "evidence": evidence,
         }),
     );
 }
 
-fn emit_tool_done(event_bus: &dyn EventBus, tool: &str, cached: bool) {
+fn emit_tool_done(event_bus: &dyn EventBus, tool: &str, cached: bool, result: &serde_json::Value) {
     emit_router_status(
         event_bus,
         "tool_result",
         serde_json::json!({
             "tool": tool,
             "cached": cached,
+            "result": result,
         }),
     );
 }
