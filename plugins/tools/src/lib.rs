@@ -1,6 +1,8 @@
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use gibberish_context::{platform::PlatformProvider, ContextChangedEvent, ContextPoller};
+use gibberish_input::{start_panic_hotkey_listener, PanicHotkeyHandle};
 use tauri::plugin::{Builder, TauriPlugin};
 use tauri::{Listener, Manager, Runtime};
 use tokio::sync::Mutex;
@@ -48,6 +50,17 @@ impl std::fmt::Debug for ContextPollerHandle {
     }
 }
 
+/// Wrapper to keep the panic hotkey listener alive for the app's lifetime.
+struct PanicHotkeyListenerHandle(PanicHotkeyHandle);
+
+impl std::fmt::Debug for PanicHotkeyListenerHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PanicHotkeyListenerHandle")
+            .field("running", &self.0.is_running())
+            .finish()
+    }
+}
+
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new(PLUGIN_NAME)
         .invoke_handler(tauri::generate_handler![
@@ -68,8 +81,19 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::request_input_access,
         ])
         .setup(|app, _api| {
+            // Create shared abort flag for panic hotkey
+            let global_abort = Arc::new(AtomicBool::new(false));
+
+            // Start panic hotkey listener (Esc x3)
+            let hotkey_handle = start_panic_hotkey_listener(Arc::clone(&global_abort));
+            app.manage(PanicHotkeyListenerHandle(hotkey_handle));
+            tracing::info!("Panic hotkey listener started (Esc x3 to abort)");
+
             let event_bus = Arc::new(TauriEventBus::new(app.clone()));
-            app.manage(Arc::new(Mutex::new(state::ToolsState::new(event_bus))));
+            app.manage(Arc::new(Mutex::new(state::ToolsState::with_abort_flag(
+                event_bus,
+                global_abort,
+            ))));
 
             // Start context poller
             start_context_poller(app);

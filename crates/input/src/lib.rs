@@ -22,6 +22,7 @@
 
 mod controller;
 mod error;
+mod panic_hotkey;
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -30,6 +31,7 @@ use std::sync::Arc;
 
 pub use controller::{InputController, TypeOptions, TypeResult};
 pub use error::InputError;
+pub use panic_hotkey::{start_panic_hotkey_listener, PanicHotkeyHandle};
 
 /// Trait for checking window focus during typing.
 ///

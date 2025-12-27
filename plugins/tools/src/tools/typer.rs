@@ -8,6 +8,7 @@ use crate::adapters::PlatformFocusChecker;
 use async_trait::async_trait;
 use gibberish_input::{FocusChecker, InputController, TypeOptions};
 use serde_json::json;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /// Tool for typing text via voice command.
@@ -66,8 +67,13 @@ impl Tool for TyperTool {
     async fn execute(
         &self,
         args: &serde_json::Value,
-        _ctx: &ToolContext,
+        ctx: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
+        // Check for abort before starting
+        if ctx.is_aborted() {
+            return Err(ToolError::ExecutionFailed("Aborted by panic hotkey".to_string()));
+        }
+
         let text = args
             .get("text")
             .and_then(|v| v.as_str())
@@ -76,9 +82,12 @@ impl Tool for TyperTool {
             .ok_or(ToolError::MissingArg("text"))?
             .to_string();
 
+        // Clone the abort flag for the blocking task
+        let abort_flag = Arc::clone(&ctx.abort_flag);
+
         // Run typing on a blocking thread since InputController contains
         // platform-specific types that may not be Send
-        let result = tokio::task::spawn_blocking(move || type_text_blocking(&text))
+        let result = tokio::task::spawn_blocking(move || type_text_blocking(&text, abort_flag))
             .await
             .map_err(|e| ToolError::ExecutionFailed(format!("Task join error: {}", e)))??;
 
@@ -103,12 +112,32 @@ struct TyperResult {
 }
 
 /// Execute typing on the current thread (called via spawn_blocking).
-fn type_text_blocking(text: &str) -> Result<TyperResult, ToolError> {
+fn type_text_blocking(text: &str, abort_flag: Arc<AtomicBool>) -> Result<TyperResult, ToolError> {
+    // Check abort before starting
+    if abort_flag.load(Ordering::SeqCst) {
+        return Err(ToolError::ExecutionFailed("Aborted by panic hotkey".to_string()));
+    }
+
     // Create focus checker using the shared adapter
     let focus_checker: Arc<dyn FocusChecker> = Arc::new(PlatformFocusChecker::new());
 
     // Create input controller with focus verification
     let mut controller = InputController::new(Some(focus_checker))?;
+
+    // Wire the global abort flag to the controller
+    // The InputController checks its own abort flag during typing
+    {
+        let controller_abort = controller.abort_handle();
+        // Spawn a monitoring thread that propagates global abort to controller
+        let flag_clone = Arc::clone(&abort_flag);
+        std::thread::spawn(move || {
+            while !flag_clone.load(Ordering::SeqCst) {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            controller_abort.store(true, Ordering::SeqCst);
+            tracing::info!("Propagated panic hotkey abort to InputController");
+        });
+    }
 
     // Type with default options
     let result = controller.type_text(text, TypeOptions::default())?;

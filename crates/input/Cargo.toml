@@ -10,3 +10,6 @@ thiserror.workspace = true
 
 # Input simulation
 enigo = "0.2"
+
+# Global key event listening (for panic hotkey)
+rdev = "0.5"

@@ -26,6 +26,7 @@ pub use web_search::WebSearchTool;
 
 use async_trait::async_trait;
 use gibberish_context::Mode;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::environment::SystemEnvironment;
@@ -47,17 +48,37 @@ pub struct ToolContext {
     pub env: Arc<dyn SystemEnvironment>,
     /// Default language for tools that support i18n.
     pub default_lang: String,
+    /// Global abort flag (set by panic hotkey Esc x3).
+    pub abort_flag: Arc<AtomicBool>,
 }
 
 impl ToolContext {
     /// Create a new context with the given environment.
     pub fn new(env: Arc<dyn SystemEnvironment>, default_lang: String) -> Self {
-        Self { env, default_lang }
+        Self::with_abort(env, default_lang, Arc::new(AtomicBool::new(false)))
+    }
+
+    /// Create a new context with a shared abort flag.
+    pub fn with_abort(
+        env: Arc<dyn SystemEnvironment>,
+        default_lang: String,
+        abort_flag: Arc<AtomicBool>,
+    ) -> Self {
+        Self {
+            env,
+            default_lang,
+            abort_flag,
+        }
     }
 
     /// Get the HTTP client from the environment.
     pub fn client(&self) -> &reqwest::Client {
         self.env.http_client()
+    }
+
+    /// Check if abort has been requested (by panic hotkey).
+    pub fn is_aborted(&self) -> bool {
+        self.abort_flag.load(Ordering::SeqCst)
     }
 }
 

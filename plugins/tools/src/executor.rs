@@ -107,13 +107,17 @@ pub async fn execute_tool(
     }
 
     // Execute the tool with system environment
-    let (client, default_lang) = {
+    let (client, default_lang, abort_flag) = {
         let guard = state.lock().await;
-        (guard.client.clone(), guard.router.default_lang.clone())
+        (
+            guard.client.clone(),
+            guard.router.default_lang.clone(),
+            Arc::clone(&guard.global_abort),
+        )
     };
 
     let env = Arc::new(RealSystemEnvironment::new(client));
-    let ctx = ToolContext::new(env, default_lang);
+    let ctx = ToolContext::with_abort(env, default_lang, abort_flag);
 
     // Resolve deictic references (clipboard, selection, etc.) before execution
     let clipboard_provider = PlatformClipboard::new();
