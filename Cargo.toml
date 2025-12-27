@@ -49,7 +49,7 @@ tokenizers = "0.22"
 gibberish-parakeet = { path = "crates/parakeet" }
 
 # ML / Inference
-ort = { version = "2.0.0-rc.10", features = ["download-binaries"] }
+ort = { version = "2.0.0-rc.10", features = ["download-binaries", "coreml"] }
 
 # Voice Activity Detection
 silero = { git = "https://github.com/emotechlab/silero-rs", rev = "26a6460" }

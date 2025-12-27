@@ -1,3 +1,4 @@
+use ort::execution_providers::CoreMLExecutionProvider;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::session::Session;
 use ort::value::ValueType;
@@ -123,12 +124,17 @@ impl FunctionGemmaRunner {
         let tokenizer = Tokenizer::from_file(tokenizer_path.as_ref())
             .map_err(|e| FunctionGemmaError::Tokenizer(e.to_string()))?;
 
+        // Try CoreML on macOS for GPU acceleration, fallback to CPU
         let session = Session::builder()
+            .map_err(|e| FunctionGemmaError::Model(e.to_string()))?
+            .with_execution_providers([CoreMLExecutionProvider::default().build()])
             .map_err(|e| FunctionGemmaError::Model(e.to_string()))?
             .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(|e| FunctionGemmaError::Model(e.to_string()))?
             .commit_from_file(model_path.as_ref())
             .map_err(|e| FunctionGemmaError::Model(e.to_string()))?;
+
+        tracing::info!("FunctionGemma session loaded with CoreML provider");
 
         let input_names = session
             .inputs
