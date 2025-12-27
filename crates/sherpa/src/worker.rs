@@ -11,6 +11,9 @@ use gibberish_stt::SILENCE_INJECTION_SAMPLES;
 
 use crate::RecognizerHandle;
 
+/// Pre-allocated silence buffer to avoid per-call allocation
+const SILENCE_BUFFER: [f32; 1600] = [0.0; 1600];
+
 /// Wrapper for sherpa pointers that can be sent to a worker thread.
 ///
 /// # Safety
@@ -309,7 +312,8 @@ fn inference_loop(
 
             InferenceRequest::InjectSilence { sample_rate } => {
                 // Feed silence samples to help acoustic model reset context
-                let silence = vec![0.0f32; SILENCE_INJECTION_SAMPLES];
+                // Use static buffer to avoid allocation
+                let silence = &SILENCE_BUFFER[..SILENCE_INJECTION_SAMPLES];
                 unsafe {
                     sherpa_rs_sys::SherpaOnnxOnlineStreamAcceptWaveform(
                         stream,

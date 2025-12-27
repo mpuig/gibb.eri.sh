@@ -1,6 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, SampleFormat, Stream};
 use crossbeam_channel::{Receiver, Sender};
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "macos")]
@@ -399,12 +400,15 @@ struct AudioMixer {
 }
 
 struct MixerState {
-    buffers: [Vec<f32>; 2],
+    /// Ring buffers for each channel - VecDeque for efficient front removal
+    buffers: [VecDeque<f32>; 2],
     /// When we emit audio while one channel is missing, we treat the missing portion as silence
     /// and mark the channel as "behind". Any late-arriving samples for that time window must be
     /// dropped to avoid time-misaligned mixing ("fragment mixing").
     pending_drop: [usize; 2],
     last_emit: std::time::Instant,
+    /// Pre-allocated working buffer to avoid per-chunk allocations
+    working: Vec<f32>,
 }
 
 impl AudioMixer {
@@ -412,9 +416,11 @@ impl AudioMixer {
         Self {
             tx,
             state: Arc::new(Mutex::new(MixerState {
-                buffers: [Vec::new(), Vec::new()],
+                buffers: [VecDeque::with_capacity(4800), VecDeque::with_capacity(4800)],
                 pending_drop: [0, 0],
                 last_emit: std::time::Instant::now(),
+                // Pre-allocate for ~100ms at 16kHz
+                working: Vec::with_capacity(1600),
             })),
         }
     }
@@ -442,14 +448,19 @@ impl AudioMixer {
         // Fast path: both channels have data; emit in batches aligned to MIXER_MIN_SAMPLES.
         if min_len >= MIXER_MIN_SAMPLES {
             let len = (min_len / MIXER_MIN_SAMPLES) * MIXER_MIN_SAMPLES;
-            let buf0: Vec<f32> = state.buffers[0].drain(..len).collect();
-            let buf1: Vec<f32> = state.buffers[1].drain(..len).collect();
 
-            let mixed: Vec<f32> = buf0
-                .into_iter()
-                .zip(buf1)
-                .map(|(a, b)| (a + b) * 0.5)
-                .collect();
+            // Mix directly into working buffer (reuses allocation)
+            state.working.clear();
+            state.working.reserve(len);
+            for _ in 0..len {
+                let a = state.buffers[0].pop_front().unwrap_or(0.0);
+                let b = state.buffers[1].pop_front().unwrap_or(0.0);
+                state.working.push((a + b) * 0.5);
+            }
+
+            // Swap working buffer to send, replace with empty (keeps capacity for next time)
+            let mixed = std::mem::take(&mut state.working);
+            state.working = Vec::with_capacity(1600);
 
             if self.tx.send(mixed).is_err() {
                 return false;
@@ -471,8 +482,6 @@ impl AudioMixer {
 
             let take0 = state.buffers[0].len().min(len);
             let take1 = state.buffers[1].len().min(len);
-            let buf0: Vec<f32> = state.buffers[0].drain(..take0).collect();
-            let buf1: Vec<f32> = state.buffers[1].drain(..take1).collect();
 
             if take0 < len {
                 state.pending_drop[0] = state.pending_drop[0].saturating_add(len - take0);
@@ -481,12 +490,25 @@ impl AudioMixer {
                 state.pending_drop[1] = state.pending_drop[1].saturating_add(len - take1);
             }
 
-            let mut mixed = Vec::with_capacity(len);
+            // Mix directly into working buffer
+            state.working.clear();
+            state.working.reserve(len);
             for i in 0..len {
-                let a = buf0.get(i).copied().unwrap_or(0.0);
-                let b = buf1.get(i).copied().unwrap_or(0.0);
-                mixed.push((a + b) * 0.5);
+                let a = if i < take0 {
+                    state.buffers[0].pop_front().unwrap_or(0.0)
+                } else {
+                    0.0
+                };
+                let b = if i < take1 {
+                    state.buffers[1].pop_front().unwrap_or(0.0)
+                } else {
+                    0.0
+                };
+                state.working.push((a + b) * 0.5);
             }
+
+            let mixed = std::mem::take(&mut state.working);
+            state.working = Vec::with_capacity(1600);
 
             if self.tx.send(mixed).is_err() {
                 return false;
