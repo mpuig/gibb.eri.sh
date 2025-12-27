@@ -151,6 +151,13 @@ impl Tool for GitVoiceTool {
         ]
     }
 
+    fn few_shot_examples(&self) -> &'static [&'static str] {
+        &[
+            "User: git status\n<start_function_call>call:git_voice{action:<escape>status<escape>}<end_function_call>",
+            "User: commit with message fix bug\n<start_function_call>call:git_voice{action:<escape>commit<escape>,message:<escape>fix bug<escape>}<end_function_call>",
+        ]
+    }
+
     // Only available in Dev mode
     fn modes(&self) -> &'static [Mode] {
         &[Mode::Dev]

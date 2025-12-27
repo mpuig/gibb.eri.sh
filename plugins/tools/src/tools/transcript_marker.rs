@@ -74,6 +74,12 @@ impl Tool for TranscriptMarkerTool {
         ]
     }
 
+    fn few_shot_examples(&self) -> &'static [&'static str] {
+        &[
+            "User: mark this as important\n<start_function_call>call:transcript_marker{action:<escape>mark<escape>,type:<escape>important<escape>}<end_function_call>",
+        ]
+    }
+
     // Available in Meeting mode
     fn modes(&self) -> &'static [Mode] {
         &[Mode::Meeting]

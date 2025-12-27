@@ -133,6 +133,13 @@ impl Tool for AppLauncherTool {
         ]
     }
 
+    fn few_shot_examples(&self) -> &'static [&'static str] {
+        &[
+            "User: open Safari\n<start_function_call>call:app_launcher{action:<escape>open<escape>,app:<escape>Safari<escape>}<end_function_call>",
+            "User: switch to Slack\n<start_function_call>call:app_launcher{action:<escape>switch<escape>,app:<escape>Slack<escape>}<end_function_call>",
+        ]
+    }
+
     // Available in all modes (Global)
     fn modes(&self) -> &'static [gibberish_context::Mode] {
         &[]

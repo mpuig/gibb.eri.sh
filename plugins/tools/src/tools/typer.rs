@@ -32,6 +32,12 @@ impl Tool for TyperTool {
         ]
     }
 
+    fn few_shot_examples(&self) -> &'static [&'static str] {
+        &[
+            "User: type hello world\n<start_function_call>call:typer{text:<escape>hello world<escape>}<end_function_call>",
+        ]
+    }
+
     fn args_schema(&self) -> serde_json::Value {
         json!({
             "type": "object",

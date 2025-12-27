@@ -125,8 +125,14 @@ pub trait Tool: Send + Sync {
         ""
     }
 
-    /// Example voice phrases that trigger this tool.
+    /// Example voice phrases that trigger this tool (human-readable).
     fn example_phrases(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Few-shot examples for FunctionGemma prompt in the format:
+    /// "User: <input>\n<start_function_call>call:tool_name{...}<end_function_call>"
+    fn few_shot_examples(&self) -> &'static [&'static str] {
         &[]
     }
 

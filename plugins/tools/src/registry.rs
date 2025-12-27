@@ -158,6 +158,13 @@ impl ToolRegistry {
 
         let tool_list = tool_names.join(", ");
 
+        // Collect examples from tools
+        let examples: Vec<&str> = tools
+            .iter()
+            .flat_map(|t| t.few_shot_examples().iter().copied())
+            .collect();
+        let examples_text = examples.join("\n\n");
+
         format!(
             "You are an action router. Match user intent to ONE tool.\n\
             \n\
@@ -168,22 +175,12 @@ impl ToolRegistry {
             - type/write text → typer\n\
             - search/what is/tell me about → web_search\n\
             - volume/mute/sleep/dnd → system_control\n\
+            - git commands (status, commit, push, diff) → git_voice\n\
+            - find files → file_finder\n\
+            - add todo/action item → add_todo\n\
             \n\
             Examples:\n\
-            User: open Safari\n\
-            <start_function_call>call:app_launcher{{action:<escape>open<escape>,app:<escape>Safari<escape>}}<end_function_call>\n\
-            \n\
-            User: can you open Chrome\n\
-            <start_function_call>call:app_launcher{{action:<escape>open<escape>,app:<escape>Chrome<escape>}}<end_function_call>\n\
-            \n\
-            User: type Hello World\n\
-            <start_function_call>call:typer{{text:<escape>Hello World<escape>}}<end_function_call>\n\
-            \n\
-            User: what is quantum computing\n\
-            <start_function_call>call:web_search{{query:<escape>quantum computing<escape>}}<end_function_call>\n\
-            \n\
-            User: mute\n\
-            <start_function_call>call:system_control{{action:<escape>mute<escape>}}<end_function_call>\n"
+            {examples_text}"
         )
     }
 
@@ -257,6 +254,7 @@ impl std::fmt::Debug for dyn Tool {
         write!(f, "Tool({})", self.name())
     }
 }
+
 
 #[cfg(test)]
 mod tests {

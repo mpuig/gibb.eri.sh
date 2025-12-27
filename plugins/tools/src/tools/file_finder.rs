@@ -157,6 +157,12 @@ impl Tool for FileFinderTool {
         ]
     }
 
+    fn few_shot_examples(&self) -> &'static [&'static str] {
+        &[
+            "User: find config files\n<start_function_call>call:file_finder{action:<escape>find<escape>,query:<escape>config<escape>}<end_function_call>",
+        ]
+    }
+
     // Available in Dev mode
     fn modes(&self) -> &'static [Mode] {
         &[Mode::Dev]

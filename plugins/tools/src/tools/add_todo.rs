@@ -171,6 +171,12 @@ impl Tool for AddTodoTool {
         ]
     }
 
+    fn few_shot_examples(&self) -> &'static [&'static str] {
+        &[
+            "User: add action item review the proposal\n<start_function_call>call:add_todo{action:<escape>add<escape>,title:<escape>review the proposal<escape>}<end_function_call>",
+        ]
+    }
+
     // Available in Meeting mode (for capturing action items)
     fn modes(&self) -> &'static [Mode] {
         &[Mode::Meeting]

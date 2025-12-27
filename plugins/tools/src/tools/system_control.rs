@@ -154,6 +154,13 @@ impl Tool for SystemControlTool {
         ]
     }
 
+    fn few_shot_examples(&self) -> &'static [&'static str] {
+        &[
+            "User: mute\n<start_function_call>call:system_control{action:<escape>mute<escape>}<end_function_call>",
+            "User: set volume to 50\n<start_function_call>call:system_control{action:<escape>set_volume<escape>,value:50}<end_function_call>",
+        ]
+    }
+
     // Available in all modes (Global)
     fn modes(&self) -> &'static [gibberish_context::Mode] {
         &[]
