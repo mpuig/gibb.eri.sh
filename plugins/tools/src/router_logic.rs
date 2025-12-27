@@ -4,39 +4,10 @@
 //! separated from Tauri state management and async IO.
 
 use crate::functiongemma::Proposal;
+use crate::policy::MIN_CONFIDENCE;
 use crate::tool_manifest::ToolPolicy;
 use gibberish_context::Mode;
 use std::collections::HashMap;
-
-/// Router decision after evaluating proposals.
-///
-/// Note: This enum is part of the planned full migration. Currently only
-/// `find_best_proposal` and `determine_execution_mode` are used by router.rs.
-/// The `decide` function will be wired in during the next refactoring phase.
-#[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
-pub enum RouterDecision {
-    /// Execute the tool automatically.
-    Execute {
-        tool: String,
-        args: serde_json::Value,
-        evidence: String,
-    },
-    /// Emit proposal for user approval.
-    RequireApproval {
-        tool: String,
-        args: serde_json::Value,
-        evidence: String,
-    },
-    /// No valid tool found for the input.
-    NoMatch { reason: String },
-    /// Tool exists but is not available in current mode.
-    ModeFiltered { tool: String, mode: Mode },
-    /// Args validation failed and couldn't be repaired.
-    ArgsInvalid { tool: String },
-    /// Skip processing (empty input, disabled, etc).
-    Skip,
-}
 
 /// Configuration for router decision-making.
 #[derive(Debug, Clone)]
@@ -53,7 +24,7 @@ impl Default for RouterConfig {
             auto_run_read_only: true,
             auto_run_all: false,
             current_mode: Mode::Global,
-            min_confidence: 0.35,
+            min_confidence: MIN_CONFIDENCE,
         }
     }
 }
@@ -80,73 +51,10 @@ pub fn find_best_proposal<'a>(
 }
 
 /// Determine execution mode based on policy and config.
-pub fn determine_execution_mode(
-    policy: &ToolPolicy,
-    config: &RouterConfig,
-) -> bool {
-    // Returns true if should auto-execute, false if needs approval
+///
+/// Returns true if should auto-execute, false if needs approval.
+pub fn determine_execution_mode(policy: &ToolPolicy, config: &RouterConfig) -> bool {
     config.auto_run_all || (policy.read_only && config.auto_run_read_only)
-}
-
-
-/// Make a router decision based on proposals and configuration.
-///
-/// This is the core pure logic of the router. It takes:
-/// - Model proposals from inference
-/// - Tool policies (validation rules, read_only flags)
-/// - Router configuration (auto_run settings, min_confidence)
-/// - Pre-validated args (after repair if needed)
-/// - Mode availability (checked externally via registry)
-///
-/// Note: Mode availability must be checked externally before calling this,
-/// as it requires access to the Tool trait (not just ToolPolicy).
-///
-/// And returns a decision about what action to take.
-#[allow(dead_code)]
-pub fn decide(
-    proposals: &[Proposal],
-    policies: &HashMap<String, ToolPolicy>,
-    config: &RouterConfig,
-    validated_args: Option<serde_json::Value>,
-) -> RouterDecision {
-    // Find best proposal
-    let Some(proposal) = find_best_proposal(proposals, policies, config.min_confidence) else {
-        return RouterDecision::NoMatch {
-            reason: "No matching tool found above confidence threshold".to_string(),
-        };
-    };
-
-    // Get policy
-    let Some(policy) = policies.get(&proposal.tool) else {
-        return RouterDecision::NoMatch {
-            reason: format!("Tool '{}' not found in policies", proposal.tool),
-        };
-    };
-
-    // Use validated args or original args
-    let args = validated_args.unwrap_or_else(|| proposal.args.clone());
-
-    // Validate args (if not pre-validated)
-    if policy.validate_args(&args).is_err() {
-        return RouterDecision::ArgsInvalid {
-            tool: proposal.tool.clone(),
-        };
-    }
-
-    // Determine execution mode
-    if determine_execution_mode(policy, config) {
-        RouterDecision::Execute {
-            tool: proposal.tool.clone(),
-            args,
-            evidence: proposal.evidence.clone(),
-        }
-    } else {
-        RouterDecision::RequireApproval {
-            tool: proposal.tool.clone(),
-            args,
-            evidence: proposal.evidence.clone(),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -200,64 +108,38 @@ mod tests {
     }
 
     #[test]
-    fn test_decide_auto_run_read_only() {
-        let proposals = vec![make_proposal("web_search", 0.9)];
-        let mut policies = HashMap::new();
-        policies.insert("web_search".to_string(), make_policy(true));
-
+    fn test_determine_execution_mode_auto_run_read_only() {
+        let policy = make_policy(true); // read-only
         let config = RouterConfig {
             auto_run_read_only: true,
             auto_run_all: false,
             current_mode: Mode::Global,
             min_confidence: 0.5,
         };
-
-        let decision = decide(&proposals, &policies, &config, Some(serde_json::json!({})));
-        assert!(matches!(decision, RouterDecision::Execute { .. }));
+        assert!(determine_execution_mode(&policy, &config));
     }
 
     #[test]
-    fn test_decide_require_approval_non_readonly() {
-        let proposals = vec![make_proposal("typer", 0.9)];
-        let mut policies = HashMap::new();
-        policies.insert("typer".to_string(), make_policy(false)); // not read-only
-
+    fn test_determine_execution_mode_require_approval_non_readonly() {
+        let policy = make_policy(false); // not read-only
         let config = RouterConfig {
             auto_run_read_only: true,
             auto_run_all: false,
             current_mode: Mode::Global,
             min_confidence: 0.5,
         };
-
-        let decision = decide(&proposals, &policies, &config, Some(serde_json::json!({})));
-        assert!(matches!(decision, RouterDecision::RequireApproval { .. }));
+        assert!(!determine_execution_mode(&policy, &config));
     }
 
     #[test]
-    fn test_decide_no_match() {
-        let proposals = vec![make_proposal("tool", 0.3)]; // below threshold
-        let mut policies = HashMap::new();
-        policies.insert("tool".to_string(), make_policy(true));
-
-        let config = RouterConfig::default();
-        let decision = decide(&proposals, &policies, &config, None);
-        assert!(matches!(decision, RouterDecision::NoMatch { .. }));
-    }
-
-    #[test]
-    fn test_auto_run_all_overrides() {
-        let proposals = vec![make_proposal("dangerous_tool", 0.9)];
-        let mut policies = HashMap::new();
-        policies.insert("dangerous_tool".to_string(), make_policy(false)); // not read-only
-
+    fn test_determine_execution_mode_auto_run_all_overrides() {
+        let policy = make_policy(false); // not read-only
         let config = RouterConfig {
             auto_run_read_only: false,
             auto_run_all: true, // Override - run everything
             current_mode: Mode::Global,
             min_confidence: 0.5,
         };
-
-        let decision = decide(&proposals, &policies, &config, Some(serde_json::json!({})));
-        assert!(matches!(decision, RouterDecision::Execute { .. }));
+        assert!(determine_execution_mode(&policy, &config));
     }
 }

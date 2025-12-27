@@ -1,11 +1,11 @@
+use crate::policy::CACHE_TTL;
 use crate::state::CacheEntry;
 use crate::{SharedState, WikiSummaryDto};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tauri::State;
 
 const DEFAULT_LANG: &str = "en";
 const DEFAULT_SENTENCES: u8 = 2;
-const CACHE_TTL: Duration = Duration::from_secs(60 * 15);
 
 #[tauri::command]
 pub async fn wikipedia_city_lookup(

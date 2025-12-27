@@ -6,6 +6,7 @@ use std::time::Instant;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
+use crate::policy::MIN_CONFIDENCE;
 use crate::registry::ToolRegistry;
 use crate::tool_manifest;
 use crate::tool_manifest::ToolPolicy;
@@ -111,7 +112,7 @@ impl Default for RouterState {
             functiongemma_instructions,
             functiongemma_declarations,
             functiongemma_developer_context,
-            min_confidence: 0.35,
+            min_confidence: MIN_CONFIDENCE,
             cooldowns: HashMap::new(),
             pending_text: String::new(),
             inflight: false,

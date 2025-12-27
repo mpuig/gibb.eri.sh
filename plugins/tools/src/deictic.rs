@@ -35,6 +35,7 @@ pub enum Reference {
 
 impl Reference {
     /// Check if this reference requires external resolution.
+    #[allow(dead_code)]
     pub fn needs_resolution(&self) -> bool {
         !matches!(self, Reference::Literal { .. })
     }
