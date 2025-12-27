@@ -331,6 +331,18 @@
           "markdownDescription": "Denies the list_audio_devices command without any pre-configured scope."
         },
         {
+          "description": "Enables the promote_to_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-promote-to-recording",
+          "markdownDescription": "Enables the promote_to_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the promote_to_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-promote-to-recording",
+          "markdownDescription": "Denies the promote_to_recording command without any pre-configured scope."
+        },
+        {
           "description": "Enables the start_listening command without any pre-configured scope.",
           "type": "string",
           "const": "allow-start-listening",

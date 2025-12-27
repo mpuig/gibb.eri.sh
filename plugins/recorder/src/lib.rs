@@ -42,6 +42,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             stop_recording,
             start_listening,
             stop_listening,
+            promote_to_recording,
             get_recording_state,
             list_audio_devices,
             has_virtual_device,
@@ -340,6 +341,29 @@ async fn start_listening<R: Runtime>(
 
     // Reuse start_recording logic
     start_recording(app, state, bus_sender, None, source_type, None).await
+}
+
+/// Promote listening mode to full recording mode.
+/// This transitions from listen-only to recording without stopping audio capture.
+/// The rolling buffer becomes the start of the recording.
+#[tauri::command]
+async fn promote_to_recording<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    state: State<'_, RecorderState>,
+) -> Result<(), String> {
+    if !state.is_recording.load(Ordering::SeqCst) {
+        return Err("Not currently listening".to_string());
+    }
+    if !state.is_listen_only.load(Ordering::SeqCst) {
+        return Err("Already in recording mode".to_string());
+    }
+
+    // Switch from listen-only to full recording
+    state.is_listen_only.store(false, Ordering::SeqCst);
+    tracing::info!("Promoted from listening to recording mode");
+
+    let _ = app.emit("recorder:promoted_to_recording", ());
+    Ok(())
 }
 
 /// Stop listening (discard audio, don't save).

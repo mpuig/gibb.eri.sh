@@ -88,6 +88,32 @@ Denies the list_audio_devices command without any pre-configured scope.
 <tr>
 <td>
 
+`gibberish-recorder:allow-promote-to-recording`
+
+</td>
+<td>
+
+Enables the promote_to_recording command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`gibberish-recorder:deny-promote-to-recording`
+
+</td>
+<td>
+
+Denies the promote_to_recording command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `gibberish-recorder:allow-start-listening`
 
 </td>

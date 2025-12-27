@@ -312,16 +312,26 @@ export function useRecording() {
 
   const handleStartRecording = async () => {
     try {
+      const { isListening } = useRecordingStore.getState();
+
       clearSegments();
       setPartialText("");
       setVolatileText("");
       recordingStartTime.current = Date.now();
-      await invoke("plugin:gibberish-stt|reset_streaming_buffer");
-      // Start the audio bus listener before recording
-      await invoke("plugin:gibberish-stt|stt_start_listening");
-      await invoke("plugin:gibberish-recorder|start_recording", {
-        sourceType: "combined_native",
-      });
+
+      if (isListening) {
+        // Already capturing audio in listen mode - promote to recording
+        console.log("Promoting from listening to recording mode");
+        await invoke("plugin:gibberish-recorder|promote_to_recording");
+        useRecordingStore.getState().setIsListening(false);
+      } else {
+        // Fresh start - begin audio capture
+        await invoke("plugin:gibberish-stt|reset_streaming_buffer");
+        await invoke("plugin:gibberish-stt|stt_start_listening");
+        await invoke("plugin:gibberish-recorder|start_recording", {
+          sourceType: "combined_native",
+        });
+      }
       startRecording();
     } catch (err) {
       console.error("Failed to start recording:", err);
