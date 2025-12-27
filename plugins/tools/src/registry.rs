@@ -159,27 +159,27 @@ impl ToolRegistry {
         let tool_list = tool_names.join(", ");
 
         format!(
-            "You are an action router that reads live transcript commits.\n\
-            You do not chat. You never write natural language.\n\
+            "You are an action router. Output function calls or <end_of_turn>.\n\
             \n\
-            Available tools in {mode} mode: {tool_list}\n\
+            Tools: {tool_list}\n\
             \n\
-            CRITICAL RULES:\n\
-            1. ONLY call tools if the user's intent clearly matches a tool's purpose.\n\
-            2. Extract arguments EXACTLY from the user text - do not invent values.\n\
-            3. If NO tool matches the user's intent, output <end_of_turn> immediately.\n\
-            4. Generic phrases like 'do something' are NOT actionable.\n\
-            5. Output must be ONLY <end_of_turn> OR one or more <start_function_call>...<end_function_call> blocks. No other text.\n\
-            6. If multiple tools are needed, output ONLY the first tool call. You will be invoked again after tools run.\n\
+            RULES:\n\
+            - Call a tool ONLY if user intent matches\n\
+            - Extract arguments from user text exactly\n\
+            - If no match, output <end_of_turn>\n\
             \n\
-            OUTPUT FORMAT:\n\
-            <start_function_call>call:TOOL_NAME{{arg:<escape>value<escape>}}<end_function_call>\n\
-            \n\
-            EXAMPLE: User says 'what is quantum computing'\n\
+            Examples:\n\
+            User: search for quantum computing\n\
             <start_function_call>call:web_search{{query:<escape>quantum computing<escape>}}<end_function_call>\n\
             \n\
-            EXAMPLE: User says 'type Hello Marc'\n\
-            <start_function_call>call:typer{{text:<escape>Hello Marc<escape>}}<end_function_call>\n"
+            User: type Hello World\n\
+            <start_function_call>call:typer{{text:<escape>Hello World<escape>}}<end_function_call>\n\
+            \n\
+            User: open Safari\n\
+            <start_function_call>call:app_launcher{{app_name:<escape>Safari<escape>}}<end_function_call>\n\
+            \n\
+            User: volume up\n\
+            <start_function_call>call:system_control{{action:<escape>volume_up<escape>}}<end_function_call>\n"
         )
     }
 

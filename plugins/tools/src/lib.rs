@@ -91,11 +91,18 @@ fn start_context_poller<R: Runtime>(app: &tauri::AppHandle<R>) {
 
     let state = app.state::<SharedState>().inner().clone();
 
+    // Get event bus reference upfront (will be cloned for each callback invocation)
+    let event_bus = {
+        // This blocking_lock is safe during setup - poller hasn't started yet
+        let guard = state.blocking_lock();
+        Arc::clone(&guard.event_bus)
+    };
+
     let callback: gibberish_context::ContextCallback = Arc::new(
         move |event: ContextChangedEvent| {
             tracing::debug!(mode = %event.mode, app = ?event.active_app, "context changed");
 
-            // Update the context state in SharedState and emit event via EventBus
+            // Update the context state in SharedState (best effort - don't block poller)
             if let Ok(mut guard) = state.try_lock() {
                 let prev_mode = guard.context.effective_mode();
                 let new_mode = if guard.context.pinned_mode.is_some() {
@@ -121,11 +128,11 @@ fn start_context_poller<R: Runtime>(app: &tauri::AppHandle<R>) {
                     tracing::info!(prev = %prev_mode, new = %new_mode, "Mode changed, updating router manifest");
                     guard.router.update_for_mode(new_mode);
                 }
+            }
 
-                // Emit event via EventBus
-                if let Ok(payload) = serde_json::to_value(&event) {
-                    guard.event_bus.emit(event_names::CONTEXT_CHANGED, payload);
-                }
+            // Always emit event to UI (even if state update was skipped due to lock contention)
+            if let Ok(payload) = serde_json::to_value(&event) {
+                event_bus.emit(event_names::CONTEXT_CHANGED, payload);
             }
         },
     );

@@ -3,7 +3,18 @@
 //! Handles references like 'this', 'selection', 'clipboard' in tool arguments.
 //! These references are resolved at execution time to actual values.
 //!
-//! Note: This module is infrastructure for future clipboard/selection features.
+//! # Status: Infrastructure Only
+//!
+//! This module provides the resolution infrastructure but is **not yet wired up**
+//! to the tool executor. The `ToolContext` does not currently include providers
+//! for clipboard, selection, or transcript history.
+//!
+//! To activate deictic resolution:
+//! 1. Add `ResolverContext` to `ToolContext`
+//! 2. Implement `TranscriptProvider` (requires access to STT history)
+//! 3. Call `resolve_args()` in executor before tool.execute()
+//!
+//! Until then, tools receive raw args without reference resolution.
 
 #![allow(dead_code)]
 
