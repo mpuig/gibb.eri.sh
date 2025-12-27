@@ -159,27 +159,31 @@ impl ToolRegistry {
         let tool_list = tool_names.join(", ");
 
         format!(
-            "You are an action router. Output function calls or <end_of_turn>.\n\
+            "You are an action router. Match user intent to ONE tool.\n\
             \n\
             Tools: {tool_list}\n\
             \n\
-            RULES:\n\
-            - Call a tool ONLY if user intent matches\n\
-            - Extract arguments from user text exactly\n\
-            - If no match, output <end_of_turn>\n\
+            TOOL SELECTION:\n\
+            - open/launch/switch to app → app_launcher\n\
+            - type/write text → typer\n\
+            - search/what is/tell me about → web_search\n\
+            - volume/mute/sleep/dnd → system_control\n\
             \n\
             Examples:\n\
-            User: search for quantum computing\n\
-            <start_function_call>call:web_search{{query:<escape>quantum computing<escape>}}<end_function_call>\n\
+            User: open Safari\n\
+            <start_function_call>call:app_launcher{{action:<escape>open<escape>,app:<escape>Safari<escape>}}<end_function_call>\n\
+            \n\
+            User: can you open Chrome\n\
+            <start_function_call>call:app_launcher{{action:<escape>open<escape>,app:<escape>Chrome<escape>}}<end_function_call>\n\
             \n\
             User: type Hello World\n\
             <start_function_call>call:typer{{text:<escape>Hello World<escape>}}<end_function_call>\n\
             \n\
-            User: open Safari\n\
-            <start_function_call>call:app_launcher{{app_name:<escape>Safari<escape>}}<end_function_call>\n\
+            User: what is quantum computing\n\
+            <start_function_call>call:web_search{{query:<escape>quantum computing<escape>}}<end_function_call>\n\
             \n\
-            User: volume up\n\
-            <start_function_call>call:system_control{{action:<escape>volume_up<escape>}}<end_function_call>\n"
+            User: mute\n\
+            <start_function_call>call:system_control{{action:<escape>mute<escape>}}<end_function_call>\n"
         )
     }
 

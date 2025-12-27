@@ -15,6 +15,8 @@ use gibberish_context::Mode;
 pub struct RouterState {
     pub enabled: bool,
     pub auto_run_read_only: bool,
+    /// Auto-run ALL tools without approval (dangerous, for testing only).
+    pub auto_run_all: bool,
     pub default_lang: String,
     pub tool_manifest: Arc<str>,
     pub tool_policies: Arc<HashMap<String, ToolPolicy>>,
@@ -102,6 +104,7 @@ impl Default for RouterState {
         Self {
             enabled: true,
             auto_run_read_only: true,
+            auto_run_all: true, // Default to true for testing; disable in production
             default_lang: "en".to_string(),
             tool_manifest,
             tool_policies,

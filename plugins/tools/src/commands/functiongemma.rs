@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tauri::{Emitter, Manager, Runtime, State};
 
-const FUNCTIONGEMMA_DEFAULT_VARIANT: &str = "model_q4";
+const FUNCTIONGEMMA_DEFAULT_VARIANT: &str = "model_fp16";
 
 fn functiongemma_base_dir<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
     Ok(app

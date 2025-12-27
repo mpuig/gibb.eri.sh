@@ -62,6 +62,7 @@ fn is_tool_available_in_mode(registry: &ToolRegistry, tool_name: &str, mode: Mod
 #[derive(Debug)]
 struct RouterSettingsSnapshot {
     auto_run_read_only: bool,
+    auto_run_all: bool,
     current_mode: Mode,
 }
 
@@ -126,6 +127,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                 guard.router.enabled,
                 RouterSettingsSnapshot {
                     auto_run_read_only: guard.router.auto_run_read_only,
+                    auto_run_all: guard.router.auto_run_all,
                     current_mode: guard.context.effective_mode(),
                 },
                 guard.router.functiongemma_developer_context.clone(),
@@ -319,7 +321,9 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             continue;
         }
 
-        let execution_mode = if policy.read_only && router_settings.auto_run_read_only {
+        let execution_mode = if router_settings.auto_run_all
+            || (policy.read_only && router_settings.auto_run_read_only)
+        {
             ExecutionMode::AutoRun
         } else {
             ExecutionMode::RequireApproval
@@ -422,12 +426,13 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                         find_best_proposal(&followup_out.proposals, &tool_policies, min_confidence)
                     {
                         if let Some(next_policy) = policy_for_tool(&tool_policies, &next.tool) {
-                            let next_execution_mode =
-                                if next_policy.read_only && router_settings.auto_run_read_only {
-                                    ExecutionMode::AutoRun
-                                } else {
-                                    ExecutionMode::RequireApproval
-                                };
+                            let next_execution_mode = if router_settings.auto_run_all
+                                || (next_policy.read_only && router_settings.auto_run_read_only)
+                            {
+                                ExecutionMode::AutoRun
+                            } else {
+                                ExecutionMode::RequireApproval
+                            };
 
                             let _ = execute_tool(
                                 &state,

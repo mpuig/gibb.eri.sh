@@ -5,6 +5,8 @@ use tauri::State;
 pub struct ActionRouterSettingsDto {
     pub enabled: bool,
     pub auto_run_read_only: bool,
+    /// Auto-run ALL tools without approval (dangerous, for testing only).
+    pub auto_run_all: bool,
     pub default_lang: String,
     pub tool_manifest: String,
     pub functiongemma_instructions: String,
@@ -19,6 +21,7 @@ pub async fn get_action_router_settings(
     Ok(ActionRouterSettingsDto {
         enabled: guard.router.enabled,
         auto_run_read_only: guard.router.auto_run_read_only,
+        auto_run_all: guard.router.auto_run_all,
         default_lang: guard.router.default_lang.clone(),
         tool_manifest: guard.router.tool_manifest.as_ref().to_string(),
         functiongemma_instructions: guard.router.functiongemma_instructions.as_ref().to_string(),
@@ -31,6 +34,7 @@ pub async fn set_action_router_settings(
     state: State<'_, SharedState>,
     enabled: Option<bool>,
     auto_run_read_only: Option<bool>,
+    auto_run_all: Option<bool>,
     default_lang: Option<String>,
     tool_manifest: Option<String>,
     functiongemma_instructions: Option<String>,
@@ -42,6 +46,9 @@ pub async fn set_action_router_settings(
     }
     if let Some(v) = auto_run_read_only {
         guard.router.auto_run_read_only = v;
+    }
+    if let Some(v) = auto_run_all {
+        guard.router.auto_run_all = v;
     }
     if let Some(lang) = default_lang {
         let trimmed = lang.trim();
@@ -84,6 +91,7 @@ pub async fn set_action_router_settings(
     Ok(ActionRouterSettingsDto {
         enabled: guard.router.enabled,
         auto_run_read_only: guard.router.auto_run_read_only,
+        auto_run_all: guard.router.auto_run_all,
         default_lang: guard.router.default_lang.clone(),
         tool_manifest: guard.router.tool_manifest.as_ref().to_string(),
         functiongemma_instructions: guard.router.functiongemma_instructions.as_ref().to_string(),

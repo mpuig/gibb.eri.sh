@@ -4,10 +4,9 @@ pub struct FunctionGemmaSpec {
     pub size_bytes: u64,
 }
 
-// Keep only the default quantized variant for now.
 pub const FUNCTIONGEMMA_SPECS: &[FunctionGemmaSpec] = &[FunctionGemmaSpec {
-    variant: "model_q4",
-    size_bytes: 801_000_000,
+    variant: "model_fp16",
+    size_bytes: 570_000_000,
 }];
 
 pub fn is_supported_variant(variant: &str) -> bool {
