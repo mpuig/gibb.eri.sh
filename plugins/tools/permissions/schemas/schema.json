@@ -307,6 +307,18 @@
           "markdownDescription": "Denies the cancel_functiongemma_download command without any pre-configured scope."
         },
         {
+          "description": "Enables the check_input_access command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-check-input-access",
+          "markdownDescription": "Enables the check_input_access command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the check_input_access command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-check-input-access",
+          "markdownDescription": "Denies the check_input_access command without any pre-configured scope."
+        },
+        {
           "description": "Enables the download_functiongemma_model command without any pre-configured scope.",
           "type": "string",
           "const": "allow-download-functiongemma-model",
@@ -413,6 +425,18 @@
           "type": "string",
           "const": "deny-pin-context-mode",
           "markdownDescription": "Denies the pin_context_mode command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the request_input_access command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-request-input-access",
+          "markdownDescription": "Enables the request_input_access command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the request_input_access command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-request-input-access",
+          "markdownDescription": "Denies the request_input_access command without any pre-configured scope."
         },
         {
           "description": "Enables the set_action_router_settings command without any pre-configured scope.",

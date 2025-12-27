@@ -1,5 +1,7 @@
 fn main() {
     tauri_plugin::Builder::new(&[
+        "check_input_access",
+        "request_input_access",
         "wikipedia_city_lookup",
         "get_action_router_settings",
         "set_action_router_settings",

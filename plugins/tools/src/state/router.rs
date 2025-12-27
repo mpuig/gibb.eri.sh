@@ -7,6 +7,7 @@ use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 use crate::registry::ToolRegistry;
+use crate::tool_manifest;
 use crate::tool_manifest::ToolPolicy;
 use gibberish_context::Mode;
 
@@ -50,19 +51,21 @@ impl RouterState {
         let manifest_json = registry.manifest_json_for_mode(mode);
         self.tool_manifest = Arc::from(manifest_json.clone());
 
-        // Build dynamic policies
-        let policies = registry.policies_for_mode(mode);
-        self.tool_policies = Arc::new(policies);
+        // Compile policies + declarations from the same manifest so the model sees
+        // the exact function declaration format that our parser expects.
+        let compiled = tool_manifest::validate_and_compile(&manifest_json).unwrap_or_else(|err| {
+            tracing::warn!(mode = %mode, error = %err, "Failed to compile tool manifest");
+            tool_manifest::CompiledManifest::default()
+        });
+        self.tool_policies = Arc::new(compiled.policies);
+        self.functiongemma_declarations = Arc::from(compiled.function_declarations);
 
         // Build dynamic instructions
         let instructions = registry.functiongemma_instructions_for_mode(mode);
         self.functiongemma_instructions = Arc::from(instructions.clone());
 
-        // Build dynamic declarations
-        let declarations = registry.functiongemma_declarations_for_mode(mode);
-        self.functiongemma_declarations = Arc::from(declarations.clone());
-
         // Rebuild developer context
+        let declarations = self.functiongemma_declarations.clone();
         self.functiongemma_developer_context = Arc::from(format!(
             "You are a model that can do function calling with the following functions\n{}\n{}",
             instructions, declarations
@@ -82,15 +85,15 @@ impl Default for RouterState {
         let registry = ToolRegistry::build_all();
         let mode = Mode::Global;
 
-        let tool_manifest: Arc<str> = Arc::from(registry.manifest_json_for_mode(mode));
+        let manifest_json = registry.manifest_json_for_mode(mode);
+        let tool_manifest: Arc<str> = Arc::from(manifest_json.clone());
 
-        let tool_policies: Arc<HashMap<String, ToolPolicy>> =
-            Arc::new(registry.policies_for_mode(mode));
+        let compiled = tool_manifest::validate_and_compile(&manifest_json).unwrap_or_default();
+        let tool_policies: Arc<HashMap<String, ToolPolicy>> = Arc::new(compiled.policies);
 
         let functiongemma_instructions: Arc<str> =
             Arc::from(registry.functiongemma_instructions_for_mode(mode));
-        let functiongemma_declarations: Arc<str> =
-            Arc::from(registry.functiongemma_declarations_for_mode(mode));
+        let functiongemma_declarations: Arc<str> = Arc::from(compiled.function_declarations);
         let functiongemma_developer_context: Arc<str> = Arc::from(format!(
             "You are a model that can do function calling with the following functions\n{}\n{}",
             functiongemma_instructions, functiongemma_declarations

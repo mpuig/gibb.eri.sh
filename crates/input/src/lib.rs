@@ -14,10 +14,10 @@
 //! ```ignore
 //! use gibberish_input::{InputController, TypeOptions};
 //!
-//! let controller = InputController::new()?;
+//! let controller = InputController::new(None)?;
 //!
 //! // Type text with default rate limiting (10ms per character)
-//! controller.type_text("Hello, world!", TypeOptions::default()).await?;
+//! controller.type_text("Hello, world!", TypeOptions::default())?;
 //! ```
 
 mod controller;
@@ -26,8 +26,33 @@ mod error;
 #[cfg(target_os = "macos")]
 mod macos;
 
+use std::sync::Arc;
+
 pub use controller::{InputController, TypeOptions, TypeResult};
 pub use error::InputError;
+
+/// Trait for checking window focus during typing.
+///
+/// Implement this to provide focus verification for your platform.
+/// The input controller will abort typing if focus changes mid-operation.
+pub trait FocusChecker: Send + Sync {
+    /// Get the current focused window/app identifier.
+    ///
+    /// Returns `None` if focus cannot be determined.
+    fn get_current_focus(&self) -> Option<String>;
+}
+
+/// No-op focus checker that always returns None (disables focus verification).
+pub struct NoFocusChecker;
+
+impl FocusChecker for NoFocusChecker {
+    fn get_current_focus(&self) -> Option<String> {
+        None
+    }
+}
+
+/// Type alias for the focus checker.
+pub type FocusCheckerRef = Arc<dyn FocusChecker>;
 
 /// Check if the application has accessibility permissions.
 ///

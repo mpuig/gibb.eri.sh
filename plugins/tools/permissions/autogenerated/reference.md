@@ -36,6 +36,32 @@ Denies the cancel_functiongemma_download command without any pre-configured scop
 <tr>
 <td>
 
+`gibberish-tools:allow-check-input-access`
+
+</td>
+<td>
+
+Enables the check_input_access command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`gibberish-tools:deny-check-input-access`
+
+</td>
+<td>
+
+Denies the check_input_access command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `gibberish-tools:allow-download-functiongemma-model`
 
 </td>
@@ -263,6 +289,32 @@ Enables the pin_context_mode command without any pre-configured scope.
 <td>
 
 Denies the pin_context_mode command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`gibberish-tools:allow-request-input-access`
+
+</td>
+<td>
+
+Enables the request_input_access command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`gibberish-tools:deny-request-input-access`
+
+</td>
+<td>
+
+Denies the request_input_access command without any pre-configured scope.
 
 </td>
 </tr>

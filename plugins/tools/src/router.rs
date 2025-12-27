@@ -369,6 +369,84 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             }
         };
 
+        // Optional follow-up: after a tool executes, give the model a chance to
+        // propose a next tool (e.g., `web_search` -> `typer`) based on the tool output.
+        if let Some(output) = tool_output.clone() {
+            let runner_for_followup = {
+                let guard = state.lock().await;
+                guard
+                    .functiongemma
+                    .model
+                    .as_ref()
+                    .map(|m| std::sync::Arc::clone(&m.runner))
+            };
+
+            if let Some(runner) = runner_for_followup {
+                // Keep the follow-up context small; only include a short JSON preview.
+                let output_preview =
+                    serde_json::to_string(&output).unwrap_or_else(|_| output.to_string());
+                let output_preview = if output_preview.len() > 1400 {
+                    format!("{}...", &output_preview[..1400])
+                } else {
+                    output_preview
+                };
+
+                let followup_text = format!(
+                    "Original request:\n{pending_text}\n\nTool `{tool}` output (JSON):\n{output_preview}\n\nIf another tool should be called to fully satisfy the original request, call it now. Otherwise output <end_of_turn>.",
+                    tool = proposal.tool.as_str()
+                );
+
+                emit_router_status(
+                    &app,
+                    "followup_infer_start",
+                    serde_json::json!({
+                        "after_tool": proposal.tool.as_str(),
+                    }),
+                );
+
+                let followup = tokio::task::spawn_blocking(move || {
+                    runner.infer_once(developer_context.as_ref(), &followup_text)
+                })
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|r| r.map_err(|e| e.to_string()));
+
+                if let Ok(followup_out) = followup {
+                    emit_router_status(
+                        &app,
+                        "followup_infer_done",
+                        serde_json::json!({
+                            "raw": followup_out.raw_text,
+                        }),
+                    );
+
+                    if let Some(next) =
+                        find_best_proposal(&followup_out.proposals, &tool_policies, min_confidence)
+                    {
+                        if let Some(next_policy) = policy_for_tool(&tool_policies, &next.tool) {
+                            let next_execution_mode =
+                                if next_policy.read_only && router_settings.auto_run_read_only {
+                                    ExecutionMode::AutoRun
+                                } else {
+                                    ExecutionMode::RequireApproval
+                                };
+
+                            let _ = execute_tool(
+                                &app,
+                                &state,
+                                &registry,
+                                &next.tool,
+                                &next.args,
+                                &next.evidence,
+                                next_execution_mode,
+                            )
+                            .await;
+                        }
+                    }
+                }
+            }
+        }
+
         // Generate natural language summary if we have tool output
         if let Some(output) = tool_output {
             let runner_for_summary = {

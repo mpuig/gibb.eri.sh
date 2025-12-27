@@ -1,13 +1,12 @@
 //! Input controller for safe text typing and key simulation.
 
 use crate::error::InputError;
+use crate::FocusCheckerRef;
 use enigo::{Enigo, Keyboard, Settings};
-use gibberish_context::platform::PlatformProvider;
-use gibberish_context::ActiveAppProvider;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::thread;
 use std::time::Duration;
-use tokio::time::sleep;
 
 /// Default delay between keystrokes (10ms).
 pub const DEFAULT_TYPING_DELAY_MS: u64 = 10;
@@ -50,14 +49,22 @@ pub struct TypeResult {
 pub struct InputController {
     enigo: Enigo,
     abort_flag: Arc<AtomicBool>,
+    focus_checker: Option<FocusCheckerRef>,
 }
 
 impl InputController {
     /// Create a new input controller.
     ///
+    /// # Arguments
+    ///
+    /// * `focus_checker` - Optional focus checker for verifying window focus.
+    ///   Pass `None` to disable focus verification.
+    ///
+    /// # Errors
+    ///
     /// Returns an error if accessibility permissions are not granted (macOS)
     /// or if the input system fails to initialize.
-    pub fn new() -> Result<Self, InputError> {
+    pub fn new(focus_checker: Option<FocusCheckerRef>) -> Result<Self, InputError> {
         // Check accessibility permissions first
         if !crate::has_accessibility_access() {
             return Err(InputError::AccessibilityNotGranted);
@@ -69,6 +76,7 @@ impl InputController {
         Ok(Self {
             enigo,
             abort_flag: Arc::new(AtomicBool::new(false)),
+            focus_checker,
         })
     }
 
@@ -91,6 +99,8 @@ impl InputController {
 
     /// Type text with rate limiting and optional focus verification.
     ///
+    /// This is a synchronous operation that blocks the calling thread.
+    ///
     /// # Arguments
     ///
     /// * `text` - The text to type.
@@ -106,11 +116,7 @@ impl InputController {
     /// - `InputError::FocusChanged` if the active window changes during typing
     /// - `InputError::Aborted` if the abort flag was set
     /// - `InputError::TypeFailed` if a character fails to type
-    pub async fn type_text(
-        &mut self,
-        text: &str,
-        options: TypeOptions,
-    ) -> Result<TypeResult, InputError> {
+    pub fn type_text(&mut self, text: &str, options: TypeOptions) -> Result<TypeResult, InputError> {
         // Reset abort flag at start
         self.abort_flag.store(false, Ordering::SeqCst);
 
@@ -123,10 +129,11 @@ impl InputController {
             });
         }
 
-        // Get initial focus for verification
-        let initial_app = if options.verify_focus {
-            let provider = PlatformProvider::new();
-            provider.get_active_app().map(|a| a.bundle_id)
+        // Get initial focus for verification (only if we have a checker and verify_focus is true)
+        let initial_focus = if options.verify_focus {
+            self.focus_checker
+                .as_ref()
+                .and_then(|checker| checker.get_current_focus())
         } else {
             None
         };
@@ -140,15 +147,14 @@ impl InputController {
                 return Err(InputError::Aborted);
             }
 
-            // Verify focus hasn't changed
-            if options.verify_focus {
-                if let Some(ref expected) = initial_app {
-                    let provider = PlatformProvider::new();
-                    if let Some(current) = provider.get_active_app() {
-                        if &current.bundle_id != expected {
+            // Verify focus hasn't changed (only if we captured initial focus)
+            if let Some(ref expected) = initial_focus {
+                if let Some(ref checker) = self.focus_checker {
+                    if let Some(current) = checker.get_current_focus() {
+                        if &current != expected {
                             return Err(InputError::FocusChanged {
                                 expected: expected.clone(),
-                                actual: current.bundle_id,
+                                actual: current,
                             });
                         }
                     }
@@ -164,7 +170,7 @@ impl InputController {
 
             // Rate limiting delay
             if options.delay_ms > 0 {
-                sleep(delay).await;
+                thread::sleep(delay);
             }
         }
 
@@ -178,11 +184,7 @@ impl InputController {
     /// Type text without focus verification (faster but less safe).
     ///
     /// Use this only when you're certain the target window won't change.
-    pub async fn type_text_fast(
-        &mut self,
-        text: &str,
-        delay_ms: u64,
-    ) -> Result<TypeResult, InputError> {
+    pub fn type_text_fast(&mut self, text: &str, delay_ms: u64) -> Result<TypeResult, InputError> {
         self.type_text(
             text,
             TypeOptions {
@@ -191,7 +193,6 @@ impl InputController {
                 preview: false,
             },
         )
-        .await
     }
 }
 
@@ -199,6 +200,7 @@ impl std::fmt::Debug for InputController {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InputController")
             .field("abort_flag", &self.abort_flag.load(Ordering::SeqCst))
+            .field("has_focus_checker", &self.focus_checker.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -207,13 +209,10 @@ impl std::fmt::Debug for InputController {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_preview_mode() {
-        // Preview mode should work without accessibility permissions
-        // since it doesn't actually type anything
-
+    #[test]
+    fn test_preview_mode() {
         // Skip if no accessibility (can't create controller)
-        let controller = match InputController::new() {
+        let mut controller = match InputController::new(None) {
             Ok(c) => c,
             Err(InputError::AccessibilityNotGranted) => {
                 println!("Skipping test - no accessibility permission");
@@ -222,7 +221,6 @@ mod tests {
             Err(e) => panic!("Unexpected error: {}", e),
         };
 
-        let mut controller = controller;
         let result = controller
             .type_text(
                 "Hello",
@@ -231,7 +229,6 @@ mod tests {
                     ..Default::default()
                 },
             )
-            .await
             .unwrap();
 
         assert_eq!(result.preview_text, Some("Hello".to_string()));
@@ -241,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_abort_flag() {
-        let controller = match InputController::new() {
+        let controller = match InputController::new(None) {
             Ok(c) => c,
             Err(_) => return, // Skip if can't create controller
         };

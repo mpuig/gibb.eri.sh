@@ -168,36 +168,33 @@ impl ToolRegistry {
             2. Extract arguments EXACTLY from the user text - do not invent values.\n\
             3. If NO tool matches the user's intent, output <end_of_turn> immediately.\n\
             4. Generic phrases like 'do something' are NOT actionable.\n\
+            5. Output must be ONLY <end_of_turn> OR one or more <start_function_call>...<end_function_call> blocks. No other text.\n\
+            6. If multiple tools are needed, output ONLY the first tool call. You will be invoked again after tools run.\n\
             \n\
             OUTPUT FORMAT:\n\
             <start_function_call>call:TOOL_NAME{{arg:<escape>value<escape>}}<end_function_call>\n\
             \n\
             EXAMPLE: User says 'what is quantum computing'\n\
-            <start_function_call>call:web_search{{query:<escape>quantum computing<escape>}}<end_function_call>\n"
+            <start_function_call>call:web_search{{query:<escape>quantum computing<escape>}}<end_function_call>\n\
+            \n\
+            EXAMPLE: User says 'type Hello Marc'\n\
+            <start_function_call>call:typer{{text:<escape>Hello Marc<escape>}}<end_function_call>\n"
         )
     }
 
     /// Build FunctionGemma function declarations for the given mode.
     ///
-    /// Outputs declarations in the official FunctionGemma format:
-    /// <start_function_declaration>{"name": "...", "description": "...", "parameters": {...}}<end_function_declaration>
+    /// Outputs declarations in the FunctionGemma format that our parser expects:
+    /// `<start_function_declaration>declaration:TOOL{...}<end_function_declaration>`
     pub fn functiongemma_declarations_for_mode(&self, mode: Mode) -> String {
-        let definitions = self.definitions_for_mode(mode);
-        let declarations: Vec<String> = definitions
-            .iter()
-            .map(|def| {
-                let decl = serde_json::json!({
-                    "name": def.name,
-                    "description": def.description,
-                    "parameters": def.args_schema
-                });
-                format!(
-                    "<start_function_declaration>{}<end_function_declaration>",
-                    serde_json::to_string(&decl).unwrap_or_else(|_| "{}".to_string())
-                )
-            })
-            .collect();
-        declarations.join("\n")
+        let manifest_json = self.manifest_json_for_mode(mode);
+        match crate::tool_manifest::validate_and_compile(&manifest_json) {
+            Ok(compiled) => compiled.function_declarations,
+            Err(err) => {
+                tracing::warn!(mode = %mode, error = %err, "Failed to compile tool manifest for FunctionGemma declarations");
+                String::new()
+            }
+        }
     }
 }
 

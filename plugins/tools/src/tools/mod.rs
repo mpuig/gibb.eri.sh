@@ -93,9 +93,6 @@ pub enum ToolError {
     #[error("execution failed: {0}")]
     ExecutionFailed(String),
 
-    #[error("permission denied: {0}")]
-    PermissionDenied(String),
-
     #[error("network error: {0}")]
     Network(#[from] reqwest::Error),
 

@@ -7,17 +7,6 @@ description = "Input emulation (typing, key sequences) for gibb.eri.sh"
 [dependencies]
 tracing.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["time"] }
 
 # Input simulation
 enigo = "0.2"
-
-# Context awareness (for focus verification)
-gibberish-context = { path = "../context" }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-# For accessibility permission check
-core-foundation.workspace = true
-
-[dev-dependencies]
-tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
