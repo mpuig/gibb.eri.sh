@@ -20,8 +20,8 @@ mod parser;
 mod types;
 
 pub use error::{SkillError, SkillResult};
-pub use executor::{execute_command, execute_tool, CommandOutput, ExecutorConfig};
-pub use parser::parse_skill;
+pub use executor::{execute_command, execute_tool, kill_tree, CommandOutput, ExecutorConfig};
+pub use parser::{parse_skill, parse_skill_content};
 pub use types::{
     ArgFragment, CommandTemplate, Mode, ParameterDefinition, ParameterType, SkillDefinition,
     ToolDefinition,

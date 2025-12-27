@@ -99,6 +99,7 @@ gibberish-stt = { path = "crates/stt" }
 gibberish-transcript = { path = "crates/transcript" }
 gibberish-turn = { path = "crates/turn" }
 gibberish-vad = { path = "crates/vad" }
+gibberish-skills = { path = "crates/skills" }
 
 # Internal plugins
 tauri-plugin-gibberish-detect = { path = "plugins/detect" }

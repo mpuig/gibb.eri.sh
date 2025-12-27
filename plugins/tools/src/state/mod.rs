@@ -11,6 +11,7 @@ pub use router::RouterState;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::skill_loader::SkillManager;
 use gibberish_context::ContextState;
 use gibberish_events::{EventBusRef, NullEventBus};
 
@@ -47,6 +48,8 @@ pub struct ToolsState {
     pub event_bus: EventBusRef,
     /// Global abort flag set by panic hotkey (Esc x3).
     pub global_abort: GlobalAbortFlag,
+    /// Loaded skills for user-defined tools.
+    pub skills: SkillManager,
 }
 
 impl ToolsState {
@@ -57,15 +60,41 @@ impl ToolsState {
 
     /// Create a new ToolsState with a shared abort flag.
     pub fn with_abort_flag(event_bus: EventBusRef, global_abort: GlobalAbortFlag) -> Self {
+        // Load skills at startup
+        let skills = SkillManager::new();
+
+        // Create router with skills
+        let router = RouterState::with_skills(&skills);
+
         Self {
             client: reqwest::Client::new(),
-            router: RouterState::default(),
+            router,
             functiongemma: FunctionGemmaState::default(),
             cache: CacheState::default(),
             context: ContextState::default(),
             event_bus,
             global_abort,
+            skills,
         }
+    }
+
+    /// Reload skills from disk and update the router.
+    pub fn reload_skills(&mut self) -> crate::skill_loader::ReloadResult {
+        let result = self.skills.reload();
+
+        // Update router with new skills
+        let mode = self.context.effective_mode();
+        let registry = crate::registry::ToolRegistry::build_with_skills(&self.skills);
+        self.router.update_with_registry(&registry, mode);
+
+        tracing::info!(
+            skill_count = result.skill_count,
+            tool_count = result.tool_count,
+            error_count = result.errors.len(),
+            "Skills reloaded"
+        );
+
+        result
     }
 
     /// Check if the global abort flag is set.
@@ -89,6 +118,7 @@ impl std::fmt::Debug for ToolsState {
             .field("context", &self.context)
             .field("event_bus", &"EventBusRef")
             .field("global_abort", &self.is_aborted())
+            .field("skills", &self.skills)
             .finish()
     }
 }

@@ -3,7 +3,8 @@
 //! Executes commands as program + args (no shell) with:
 //! - Timeout handling
 //! - Output truncation
-//! - Process tree cleanup
+//! - Process tree cleanup (kill_tree)
+//! - PID tracking
 
 use crate::error::{SkillError, SkillResult};
 use crate::types::{ArgFragment, CommandTemplate, ToolDefinition};
@@ -13,6 +14,7 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::time::timeout;
+use tracing::debug;
 
 /// Configuration for command execution.
 #[derive(Debug, Clone)]
@@ -62,6 +64,9 @@ pub struct CommandOutput {
 
     /// Execution duration in milliseconds.
     pub duration_ms: u64,
+
+    /// Process ID (for tracking/cancellation).
+    pub pid: Option<u32>,
 }
 
 impl CommandOutput {
@@ -86,6 +91,67 @@ impl CommandOutput {
 
         obj
     }
+}
+
+/// Kill a process and all its children.
+///
+/// On Unix, this sends SIGTERM to the process group, then SIGKILL if needed.
+/// On other platforms, falls back to regular kill.
+#[cfg(unix)]
+pub fn kill_tree(pid: u32) {
+    use std::process::Command as StdCommand;
+
+    debug!(pid, "Killing process tree");
+
+    // First try SIGTERM to the process group (negative PID)
+    let pgid = pid as i32;
+
+    // pkill by process group
+    let _ = StdCommand::new("pkill")
+        .arg("-TERM")
+        .arg("-g")
+        .arg(pgid.to_string())
+        .status();
+
+    // Give processes a moment to clean up
+    std::thread::sleep(Duration::from_millis(100));
+
+    // Force kill with SIGKILL if still running
+    let _ = StdCommand::new("pkill")
+        .arg("-KILL")
+        .arg("-g")
+        .arg(pgid.to_string())
+        .status();
+
+    debug!(pid, "Process tree killed");
+}
+
+#[cfg(not(unix))]
+pub fn kill_tree(pid: u32) {
+    debug!(pid, "Killing process (non-Unix fallback)");
+    // On non-Unix, we can't easily kill process trees
+    // The process should be killed by kill_on_drop anyway
+}
+
+/// Create a new process group for the child process (Unix only).
+///
+/// This allows us to kill all child processes with kill_tree.
+#[cfg(unix)]
+fn configure_process_group(cmd: &mut Command) {
+    // Create a new process group with the child as leader
+    // SAFETY: pre_exec is safe as long as we don't call async code
+    unsafe {
+        cmd.pre_exec(|| {
+            // setpgid(0, 0) creates a new process group with the child's PID
+            libc::setpgid(0, 0);
+            Ok(())
+        });
+    }
+}
+
+#[cfg(not(unix))]
+fn configure_process_group(_cmd: &mut Command) {
+    // Process groups not supported on non-Unix
 }
 
 /// Execute a tool with the given arguments.
@@ -113,6 +179,9 @@ pub async fn execute_command(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+
+    // Set up process group for clean termination
+    configure_process_group(&mut cmd);
 
     // Set working directory
     if let Some(ref dir) = config.working_dir {
@@ -149,6 +218,10 @@ pub async fn execute_command(
             }
         }
     })?;
+
+    // Track the PID for potential cancellation
+    let pid = child.id();
+    debug!(pid = ?pid, program, "Process spawned");
 
     // Capture output with timeout
     let timeout_duration = Duration::from_secs(config.timeout_secs as u64);
@@ -208,10 +281,16 @@ pub async fn execute_command(
                 output,
                 truncated,
                 duration_ms,
+                pid,
             })
         }
         Err(_) => {
-            // Timeout - kill the process
+            // Timeout - kill the process tree
+            if let Some(pid) = child.id() {
+                debug!(pid, "Timeout reached, killing process tree");
+                kill_tree(pid);
+            }
+            // Also call kill() to ensure cleanup
             let _ = child.kill().await;
             Err(SkillError::Timeout {
                 seconds: config.timeout_secs,

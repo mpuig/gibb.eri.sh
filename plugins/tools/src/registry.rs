@@ -6,6 +6,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::skill_loader::SkillManager;
 use crate::tool_manifest::ToolPolicy;
 use crate::tools::{
     AddTodoTool, AppLauncherTool, FileFinderTool, GitVoiceTool, PasteTool, SystemControlTool, Tool,
@@ -32,7 +33,7 @@ const ALL_TOOL_NAMES: &[&str] = &[
 ];
 
 impl ToolRegistry {
-    /// Create a registry with all known tools.
+    /// Create a registry with all known tools (built-in only).
     pub fn build_all() -> Self {
         let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
 
@@ -43,6 +44,30 @@ impl ToolRegistry {
         }
 
         Self { tools }
+    }
+
+    /// Create a registry with all built-in tools plus skill tools.
+    pub fn build_with_skills(skill_manager: &SkillManager) -> Self {
+        let mut registry = Self::build_all();
+        registry.register_skills(skill_manager);
+        registry
+    }
+
+    /// Register skill tools from a skill manager.
+    pub fn register_skills(&mut self, skill_manager: &SkillManager) {
+        for loaded in skill_manager.skills() {
+            for tool in &loaded.tools {
+                // Clone the GenericSkillTool and wrap in Arc
+                let tool_arc: Arc<dyn Tool> = Arc::new(tool.clone());
+                self.tools.insert(tool.name().to_string(), tool_arc);
+            }
+        }
+
+        tracing::debug!(
+            skill_count = skill_manager.skill_count(),
+            total_tools = self.tools.len(),
+            "Registered skill tools"
+        );
     }
 
     /// Create a registry from tool policies.

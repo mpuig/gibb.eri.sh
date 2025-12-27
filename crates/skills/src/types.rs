@@ -10,6 +10,7 @@ pub enum Mode {
     Global,
     Dev,
     Meeting,
+    Writer,
 }
 
 impl Default for Mode {

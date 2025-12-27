@@ -29,8 +29,14 @@ mod state;
 mod tool_manifest;
 mod tools;
 mod wikipedia;
+mod skill_tool;
+mod skill_loader;
+mod skill_watcher;
 
 pub use error::{Result, ToolsError};
+pub use skill_tool::GenericSkillTool;
+pub use skill_loader::{SkillManager, LoadedSkill, ReloadResult};
+pub use skill_watcher::{SkillWatcher, get_skill_directories};
 
 use adapters::TauriEventBus;
 use gibberish_events::event_names;
@@ -64,6 +70,17 @@ impl std::fmt::Debug for PanicHotkeyListenerHandle {
     }
 }
 
+/// Wrapper to keep the skill watcher alive for the app's lifetime.
+struct SkillWatcherHandle(Option<skill_watcher::SkillWatcher>);
+
+impl std::fmt::Debug for SkillWatcherHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SkillWatcherHandle")
+            .field("active", &self.0.is_some())
+            .finish()
+    }
+}
+
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new(PLUGIN_NAME)
         .invoke_handler(tauri::generate_handler![
@@ -82,6 +99,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::unpin_context_mode,
             commands::check_input_access,
             commands::request_input_access,
+            commands::reload_skills,
+            commands::list_skills,
         ])
         .setup(|app, _api| {
             // Create shared abort flag for panic hotkey
@@ -93,10 +112,14 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             tracing::info!("Panic hotkey listener started (Esc x3 to abort)");
 
             let event_bus = Arc::new(TauriEventBus::new(app.clone()));
-            app.manage(Arc::new(Mutex::new(state::ToolsState::with_abort_flag(
+            let state = Arc::new(Mutex::new(state::ToolsState::with_abort_flag(
                 event_bus,
                 global_abort,
-            ))));
+            )));
+            app.manage(state.clone());
+
+            // Start skill watcher for hot reloading
+            start_skill_watcher(app, state.clone());
 
             // Start context poller
             start_context_poller(app);
@@ -112,6 +135,46 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             Ok(())
         })
         .build()
+}
+
+fn start_skill_watcher<R: Runtime>(app: &tauri::AppHandle<R>, state: SharedState) {
+    let directories = skill_watcher::get_skill_directories();
+
+    if directories.is_empty() {
+        tracing::warn!("No skill directories to watch");
+        app.manage(SkillWatcherHandle(None));
+        return;
+    }
+
+    // Create callback that reloads skills
+    let state_clone = state.clone();
+    let callback = move || {
+        // Use blocking_lock since we're in a sync callback
+        if let Ok(mut guard) = state_clone.try_lock() {
+            let result = guard.reload_skills();
+            tracing::info!(
+                skill_count = result.skill_count,
+                tool_count = result.tool_count,
+                "Skills hot-reloaded"
+            );
+        } else {
+            tracing::warn!("Failed to acquire lock for skill reload");
+        }
+    };
+
+    match skill_watcher::SkillWatcher::new(directories, callback) {
+        Ok(watcher) => {
+            tracing::info!(
+                paths = ?watcher.watched_paths(),
+                "Skill watcher started"
+            );
+            app.manage(SkillWatcherHandle(Some(watcher)));
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to start skill watcher");
+            app.manage(SkillWatcherHandle(None));
+        }
+    }
 }
 
 fn start_context_poller<R: Runtime>(app: &tauri::AppHandle<R>) {
@@ -161,7 +224,9 @@ fn start_context_poller<R: Runtime>(app: &tauri::AppHandle<R>) {
                         // Update router manifest if mode changed
                         if prev_mode != new_mode {
                             tracing::info!(prev = %prev_mode, new = %new_mode, "Mode changed, updating router manifest");
-                            guard.router.update_for_mode(new_mode);
+                            // Build registry with skills first to avoid borrow conflicts
+                            let registry = crate::registry::ToolRegistry::build_with_skills(&guard.skills);
+                            guard.router.update_with_registry(&registry, new_mode);
                         }
                         break;
                     }
