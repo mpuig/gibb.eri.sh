@@ -19,6 +19,7 @@ tauri-build = "2"
 tauri-plugin = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
 tauri-specta = "2.0.0-rc.21"
 specta = { version = "2.0.0-rc", features = ["derive"] }
 

@@ -20,6 +20,7 @@ pub fn run() {
     tracing::info!("Starting gibberish desktop app");
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_gibberish_tray::init())
         .plugin(tauri_plugin_gibberish_recorder::init())
         .plugin(tauri_plugin_gibberish_stt::init())

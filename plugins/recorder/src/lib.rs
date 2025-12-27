@@ -15,6 +15,8 @@ use gibberish_bus::{AudioBusSender, CHUNK_SAMPLES, SAMPLE_RATE};
 
 pub struct RecorderState {
     is_recording: Arc<AtomicBool>,
+    /// Listen-only mode: captures audio but doesn't save when stopped
+    is_listen_only: Arc<AtomicBool>,
     recorder: AudioRecorder,
     stop_signal: Arc<AtomicBool>,
     /// Handle to the recording thread, so we can join it on stop
@@ -25,6 +27,7 @@ impl Default for RecorderState {
     fn default() -> Self {
         Self {
             is_recording: Arc::new(AtomicBool::new(false)),
+            is_listen_only: Arc::new(AtomicBool::new(false)),
             recorder: AudioRecorder::new(),
             stop_signal: Arc::new(AtomicBool::new(false)),
             thread_handle: Mutex::new(None),
@@ -37,6 +40,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
         .invoke_handler(tauri::generate_handler![
             start_recording,
             stop_recording,
+            start_listening,
+            stop_listening,
             get_recording_state,
             list_audio_devices,
             has_virtual_device,
@@ -81,11 +86,15 @@ async fn start_recording<R: Runtime>(
     let recorder = state.recorder.clone();
     let stop_signal = Arc::clone(&state.stop_signal);
     let is_recording = Arc::clone(&state.is_recording);
+    let is_listen_only = Arc::clone(&state.is_listen_only);
     let app_clone = app.clone();
     let bus_sender = bus_sender.inner().clone();
 
+    // Rolling buffer duration for listen-only mode (30 seconds)
+    const LISTEN_BUFFER_SECS: f32 = 30.0;
+
     let handle = thread::spawn(move || {
-        tracing::info!("Recording thread started");
+        tracing::info!("Recording thread started (listen_only={})", is_listen_only.load(Ordering::SeqCst));
         let source = match source_type.unwrap_or(AudioSourceType::Microphone) {
             AudioSourceType::Microphone => AudioSource::Microphone { device_id },
             AudioSourceType::System => AudioSource::SystemAudio {
@@ -166,6 +175,11 @@ async fn start_recording<R: Runtime>(
                         );
                     }
                     recorder.push_samples(&samples);
+
+                    // In listen-only mode, keep only the last 30 seconds (rolling buffer)
+                    if is_listen_only.load(Ordering::SeqCst) {
+                        recorder.trim_to_duration(LISTEN_BUFFER_SECS);
+                    }
 
                     // Emit audio level for UI visualization
                     let level = calculate_level(&samples);
@@ -306,6 +320,73 @@ async fn stop_recording<R: Runtime>(
     );
 
     Ok(path)
+}
+
+/// Start listening (audio capture without saving).
+/// Similar to start_recording but doesn't save a file when stopped.
+#[tauri::command]
+async fn start_listening<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    state: State<'_, RecorderState>,
+    bus_sender: State<'_, AudioBusSender>,
+    source_type: Option<AudioSourceType>,
+) -> Result<(), String> {
+    if state.is_recording.load(Ordering::SeqCst) {
+        return Err("Already recording/listening".to_string());
+    }
+
+    // Set listen-only mode
+    state.is_listen_only.store(true, Ordering::SeqCst);
+
+    // Reuse start_recording logic
+    start_recording(app, state, bus_sender, None, source_type, None).await
+}
+
+/// Stop listening (discard audio, don't save).
+#[tauri::command]
+async fn stop_listening<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    state: State<'_, RecorderState>,
+) -> Result<(), String> {
+    if !state.is_recording.load(Ordering::SeqCst) {
+        return Err("Not listening".to_string());
+    }
+
+    state.stop_signal.store(true, Ordering::SeqCst);
+    state.is_recording.store(false, Ordering::SeqCst);
+    state.is_listen_only.store(false, Ordering::SeqCst);
+
+    // Join the recording thread
+    let maybe_handle = match state.thread_handle.lock() {
+        Ok(mut guard) => guard.take(),
+        Err(poisoned) => {
+            tracing::warn!("Thread handle mutex poisoned, recovering");
+            poisoned.into_inner().take()
+        }
+    };
+    if let Some(handle) = maybe_handle {
+        tracing::info!("Waiting for listening thread to finish...");
+        let start = Instant::now();
+        let timeout = Duration::from_secs(3);
+        while !handle.is_finished() && start.elapsed() < timeout {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        if handle.is_finished() {
+            if let Err(e) = handle.join() {
+                tracing::error!("Listening thread panicked: {:?}", e);
+            }
+            tracing::info!("Listening thread finished");
+        } else {
+            tracing::error!("Timed out waiting for listening thread");
+        }
+    }
+
+    // Clear the buffer (discard audio)
+    state.recorder.clear();
+
+    let _ = app.emit("recorder:listening_stopped", ());
+
+    Ok(())
 }
 
 #[tauri::command]

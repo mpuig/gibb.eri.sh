@@ -331,6 +331,18 @@
           "markdownDescription": "Denies the list_audio_devices command without any pre-configured scope."
         },
         {
+          "description": "Enables the start_listening command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-start-listening",
+          "markdownDescription": "Enables the start_listening command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start_listening command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-start-listening",
+          "markdownDescription": "Denies the start_listening command without any pre-configured scope."
+        },
+        {
           "description": "Enables the start_recording command without any pre-configured scope.",
           "type": "string",
           "const": "allow-start-recording",
@@ -341,6 +353,18 @@
           "type": "string",
           "const": "deny-start-recording",
           "markdownDescription": "Denies the start_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stop_listening command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stop-listening",
+          "markdownDescription": "Enables the stop_listening command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stop_listening command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stop-listening",
+          "markdownDescription": "Denies the stop_listening command without any pre-configured scope."
         },
         {
           "description": "Enables the stop_recording command without any pre-configured scope.",

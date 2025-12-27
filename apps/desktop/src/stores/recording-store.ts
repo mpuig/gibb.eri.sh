@@ -11,6 +11,7 @@ export interface TranscriptSegment {
 
 interface RecordingState {
   isRecording: boolean;
+  isListening: boolean;
   isProcessing: boolean;
   isTranscribing: boolean;
   isFinalizing: boolean;
@@ -23,6 +24,7 @@ interface RecordingState {
 
   startRecording: () => void;
   stopRecording: () => void;
+  setIsListening: (value: boolean) => void;
   addSegment: (segment: TranscriptSegment) => void;
   updateSegment: (id: string, updates: Partial<TranscriptSegment>) => void;
   clearSegments: () => void;
@@ -38,6 +40,7 @@ interface RecordingState {
 
 export const useRecordingStore = create<RecordingState>((set) => ({
   isRecording: false,
+  isListening: false,
   isProcessing: false,
   isTranscribing: false,
   isFinalizing: false,
@@ -66,6 +69,8 @@ export const useRecordingStore = create<RecordingState>((set) => ({
       isTranscribing: false,
       isFinalizing: true,
     }),
+
+  setIsListening: (value) => set({ isListening: value }),
 
   addSegment: (segment) =>
     set((state) => ({ segments: [...state.segments, segment] })),

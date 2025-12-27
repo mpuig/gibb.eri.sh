@@ -42,6 +42,8 @@
     "gibberish-stt:allow-stt-get-pipeline-status",
     "gibberish-recorder:allow-start-recording",
     "gibberish-recorder:allow-stop-recording",
+    "gibberish-recorder:allow-start-listening",
+    "gibberish-recorder:allow-stop-listening",
     "gibberish-recorder:allow-get-recording-state",
     "gibberish-recorder:allow-list-audio-devices",
     "gibberish-permissions:allow-request-microphone",
@@ -64,6 +66,9 @@
     "gibberish-tools:allow-load-functiongemma-model",
     "gibberish-tools:allow-unload-functiongemma-model",
     "gibberish-tools:allow-get-current-functiongemma-model",
+    "gibberish-tools:allow-get-context",
+    "gibberish-tools:allow-pin-context-mode",
+    "gibberish-tools:allow-unpin-context-mode",
     "dialog:allow-save",
     "fs:allow-write-text-file"
   ]

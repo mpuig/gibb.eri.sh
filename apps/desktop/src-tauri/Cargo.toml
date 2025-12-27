@@ -33,3 +33,4 @@ tauri-plugin-gibberish-detect.workspace = true
 tauri-plugin-gibberish-tools.workspace = true
 tauri-plugin-dialog.workspace = true
 tauri-plugin-fs.workspace = true
+tauri-plugin-positioner.workspace = true

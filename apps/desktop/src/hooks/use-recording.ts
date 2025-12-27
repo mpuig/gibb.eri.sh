@@ -8,6 +8,7 @@ import {
   type RouterStatusEvent,
   type WikipediaCityEvent,
   type WikipediaCityErrorEvent,
+  type NoMatchEvent,
 } from "../stores/action-router-store";
 import { TranscriptSegment } from "./use-stt";
 import { useSessions } from "./use-sessions";
@@ -209,6 +210,59 @@ export function useRecording() {
       });
       if (mounted) unlisteners.push(trayStop);
 
+      // Window visibility events for menu bar app behavior
+      // Window shown = start listening for voice commands (action detection)
+      const windowShown = await listen("tray:window-shown", async () => {
+        if (!mounted) return;
+        const { currentModel, isRecording } = useRecordingStore.getState();
+        if (!currentModel) {
+          console.log("[tray] Window shown - no model loaded, skipping listener start");
+          return;
+        }
+        if (isRecording) {
+          console.log("[tray] Window shown - already recording, skipping");
+          return;
+        }
+        console.log("[tray] Window shown - starting audio capture for listening");
+        try {
+          // Reset streaming buffer
+          await invoke("plugin:gibberish-stt|reset_streaming_buffer");
+          // Start STT listener first
+          await invoke("plugin:gibberish-stt|stt_start_listening");
+          // Start audio capture (sends audio to the bus)
+          await invoke("plugin:gibberish-recorder|start_recording", {
+            sourceType: "combined_native",
+          });
+          useRecordingStore.getState().setIsListening(true);
+        } catch (err) {
+          console.error("Failed to start listening:", err);
+        }
+      });
+      if (mounted) unlisteners.push(windowShown);
+
+      // Window hidden = stop listening (privacy mode)
+      const windowHidden = await listen("tray:window-hidden", async () => {
+        if (!mounted) return;
+        const { isRecording } = useRecordingStore.getState();
+        console.log("[tray] Window hidden - stopping audio capture");
+        useRecordingStore.getState().setIsListening(false);
+        try {
+          // Stop STT listener
+          await invoke("plugin:gibberish-stt|stt_stop_listening");
+          // Stop audio capture (discards the recording since we're just listening)
+          if (!isRecording) {
+            try {
+              await invoke("plugin:gibberish-recorder|stop_recording");
+            } catch {
+              // Ignore errors if recorder wasn't running
+            }
+          }
+        } catch (err) {
+          console.error("Failed to stop listening:", err);
+        }
+      });
+      if (mounted) unlisteners.push(windowHidden);
+
       // Action router visibility (runs alongside streaming transcription)
       const routerStatus = await listen<RouterStatusEvent>(
         "tools:router_status",
@@ -216,6 +270,12 @@ export function useRecording() {
           if (!mounted) return;
           useActionRouterStore.getState().addEvent(event.payload);
           console.log("[router]", event.payload.phase, event.payload.payload);
+
+          // Handle no_match phase - show feedback to user
+          if (event.payload.phase === "no_match") {
+            const payload = event.payload.payload as NoMatchEvent;
+            useActionRouterStore.getState().setNoMatch(payload);
+          }
         }
       );
       if (mounted) unlisteners.push(routerStatus);

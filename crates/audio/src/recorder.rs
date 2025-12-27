@@ -48,6 +48,17 @@ impl AudioRecorder {
             .clear();
     }
 
+    /// Trim the buffer to keep only the last `duration_secs` of audio.
+    /// Used for rolling buffer in listen-only mode.
+    pub fn trim_to_duration(&self, duration_secs: f32) {
+        let max_samples = (duration_secs * SAMPLE_RATE as f32) as usize;
+        let mut samples = self.samples.lock().expect("audio recorder mutex poisoned");
+        if samples.len() > max_samples {
+            let excess = samples.len() - max_samples;
+            samples.drain(..excess);
+        }
+    }
+
     pub fn save_wav(&self, path: impl AsRef<Path>) -> crate::Result<()> {
         let samples = self.samples.lock().expect("audio recorder mutex poisoned");
         let spec = WavSpec {

@@ -1,20 +1,53 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { TranscriptView } from "./components/transcript-view";
 import { Onboarding } from "./components/onboarding";
 import { SettingsSheet } from "./components/settings-sheet";
 import { SessionsSheet } from "./components/sessions-sheet";
 import { ModeBadge } from "./components/mode-badge";
+import { ActionRouterPanel } from "./components/action-router-panel";
 import { useRecordingStore } from "./stores/recording-store";
 import { useOnboardingStore } from "./stores/onboarding-store";
 import { useRecording } from "./hooks/use-recording";
+import { useActionRouterStore } from "./stores/action-router-store";
+import { useStt } from "./hooks/use-stt";
+import { useFunctionGemma } from "./hooks/use-functiongemma";
 
 function App() {
-  const { isRecording, segments, currentModel } = useRecordingStore();
+  const { isRecording, isListening, segments, currentModel } = useRecordingStore();
   const { hasCompletedOnboarding } = useOnboardingStore();
   const { isTranscribing, startRecording, stopRecording } = useRecording();
+
+  // Initialize hooks at app level to auto-load last used models on startup
+  useStt();
+  useFunctionGemma();
+
+  // Start listening when model becomes available
+  useEffect(() => {
+    if (currentModel && !isListening && !isRecording) {
+      console.log("[App] Model loaded, starting listen-only mode");
+      const startListening = async () => {
+        try {
+          await invoke("plugin:gibberish-stt|reset_streaming_buffer");
+          await invoke("plugin:gibberish-stt|stt_start_listening");
+          await invoke("plugin:gibberish-recorder|start_listening", {
+            sourceType: "combined_native",
+          });
+          useRecordingStore.getState().setIsListening(true);
+        } catch (err) {
+          console.error("Failed to start listening:", err);
+        }
+      };
+      startListening();
+    }
+  }, [currentModel, isListening, isRecording]);
+
+  const { lastCityResult, lastCityError, lastNoMatch } = useActionRouterStore();
   const [showSettings, setShowSettings] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const hasActionResult = lastCityResult !== null || lastCityError !== null || lastNoMatch !== null;
 
   if (!hasCompletedOnboarding) {
     return <Onboarding />;
@@ -42,12 +75,21 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen" style={{ background: "var(--color-bg-primary)" }}>
-      {/* Header with Mode Badge */}
+      {/* Header with Mode Badge and Listening Indicator */}
       <header
         className="px-4 py-2 flex items-center justify-between"
         style={{ borderBottom: "1px solid var(--color-border)" }}
       >
-        <ModeBadge />
+        <div className="flex items-center gap-2">
+          <ModeBadge />
+          {isListening && (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs"
+              style={{ background: "rgba(34, 197, 94, 0.15)", color: "rgb(34, 197, 94)" }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "rgb(34, 197, 94)" }} />
+              Listening
+            </div>
+          )}
+        </div>
         <div className="text-xs" style={{ color: "var(--color-text-quaternary)" }}>
           gibberish
         </div>
@@ -78,19 +120,43 @@ function App() {
         ) : segments.length === 0 && !isRecording ? (
           <div className="empty-state h-full">
             <div
-              className="w-20 h-20 rounded-full flex items-center justify-center mb-6"
-              style={{ background: "var(--color-bg-secondary)" }}
+              className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 ${isListening ? "animate-pulse" : ""}`}
+              style={{
+                background: isListening ? "rgba(34, 197, 94, 0.15)" : "var(--color-bg-secondary)",
+                transition: "background 0.3s ease"
+              }}
             >
-              <svg className="w-10 h-10" style={{ color: "var(--color-text-quaternary)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg
+                className="w-10 h-10"
+                style={{ color: isListening ? "rgb(34, 197, 94)" : "var(--color-text-quaternary)" }}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
               </svg>
             </div>
-            <p style={{ color: "var(--color-text-tertiary)" }}>
-              Press record to start transcribing
+            <p style={{ color: isListening ? "rgb(34, 197, 94)" : "var(--color-text-tertiary)" }}>
+              {isListening
+                ? "Listening for voice commands..."
+                : "Press record to start transcribing"}
             </p>
+            {isListening && (
+              <p className="text-xs mt-2" style={{ color: "var(--color-text-quaternary)" }}>
+                Try saying "tell me about Barcelona"
+              </p>
+            )}
           </div>
         ) : (
           <TranscriptView segments={segments} />
+        )}
+
+        {/* Action Results */}
+        {hasActionResult && (
+          <div className="mt-4">
+            <ActionRouterPanel />
+          </div>
         )}
       </main>
 

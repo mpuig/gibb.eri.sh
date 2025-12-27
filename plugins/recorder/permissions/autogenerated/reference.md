@@ -88,6 +88,32 @@ Denies the list_audio_devices command without any pre-configured scope.
 <tr>
 <td>
 
+`gibberish-recorder:allow-start-listening`
+
+</td>
+<td>
+
+Enables the start_listening command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`gibberish-recorder:deny-start-listening`
+
+</td>
+<td>
+
+Denies the start_listening command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `gibberish-recorder:allow-start-recording`
 
 </td>
@@ -107,6 +133,32 @@ Enables the start_recording command without any pre-configured scope.
 <td>
 
 Denies the start_recording command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`gibberish-recorder:allow-stop-listening`
+
+</td>
+<td>
+
+Enables the stop_listening command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`gibberish-recorder:deny-stop-listening`
+
+</td>
+<td>
+
+Denies the stop_listening command without any pre-configured scope.
 
 </td>
 </tr>

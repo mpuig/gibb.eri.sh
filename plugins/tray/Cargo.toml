@@ -10,5 +10,6 @@ tauri-plugin = { workspace = true, features = ["build"] }
 [dependencies]
 tauri = { workspace = true, features = ["tray-icon"] }
 tauri-plugin.workspace = true
+tauri-plugin-positioner.workspace = true
 serde.workspace = true
 tracing.workspace = true
