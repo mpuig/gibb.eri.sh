@@ -106,6 +106,12 @@ impl From<crate::wikipedia::WikipediaError> for ToolError {
     }
 }
 
+impl From<gibberish_input::InputError> for ToolError {
+    fn from(e: gibberish_input::InputError) -> Self {
+        ToolError::ExecutionFailed(e.to_string())
+    }
+}
+
 /// Trait for executable tools.
 ///
 /// Uses async_trait to make the trait dyn-compatible.

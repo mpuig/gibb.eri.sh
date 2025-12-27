@@ -4,31 +4,11 @@
 //! Requires accessibility permissions on macOS.
 
 use super::{Tool, ToolContext, ToolError, ToolResult};
+use crate::adapters::PlatformFocusChecker;
 use async_trait::async_trait;
-use gibberish_context::platform::PlatformProvider;
-use gibberish_context::ActiveAppProvider;
 use gibberish_input::{FocusChecker, InputController, TypeOptions};
 use serde_json::json;
 use std::sync::Arc;
-
-/// FocusChecker implementation using the platform provider.
-struct PlatformFocusChecker {
-    provider: PlatformProvider,
-}
-
-impl PlatformFocusChecker {
-    fn new() -> Self {
-        Self {
-            provider: PlatformProvider::new(),
-        }
-    }
-}
-
-impl FocusChecker for PlatformFocusChecker {
-    fn get_current_focus(&self) -> Option<String> {
-        self.provider.get_active_app().map(|app| app.bundle_id)
-    }
-}
 
 /// Tool for typing text via voice command.
 pub struct TyperTool;
@@ -94,8 +74,7 @@ impl Tool for TyperTool {
         // platform-specific types that may not be Send
         let result = tokio::task::spawn_blocking(move || type_text_blocking(&text))
             .await
-            .map_err(|e| ToolError::ExecutionFailed(format!("Task join error: {}", e)))?
-            .map_err(ToolError::ExecutionFailed)?;
+            .map_err(|e| ToolError::ExecutionFailed(format!("Task join error: {}", e)))??;
 
         Ok(ToolResult {
             event_name: "tools:typer_result",
@@ -118,18 +97,15 @@ struct TyperResult {
 }
 
 /// Execute typing on the current thread (called via spawn_blocking).
-fn type_text_blocking(text: &str) -> Result<TyperResult, String> {
-    // Create focus checker for this platform
+fn type_text_blocking(text: &str) -> Result<TyperResult, ToolError> {
+    // Create focus checker using the shared adapter
     let focus_checker: Arc<dyn FocusChecker> = Arc::new(PlatformFocusChecker::new());
 
     // Create input controller with focus verification
-    let mut controller = InputController::new(Some(focus_checker))
-        .map_err(|e| e.to_string())?;
+    let mut controller = InputController::new(Some(focus_checker))?;
 
     // Type with default options
-    let result = controller
-        .type_text(text, TypeOptions::default())
-        .map_err(|e| e.to_string())?;
+    let result = controller.type_text(text, TypeOptions::default())?;
 
     Ok(TyperResult {
         text: text.to_string(),

@@ -5,6 +5,7 @@ use tauri::plugin::{Builder, TauriPlugin};
 use tauri::{Emitter, Listener, Manager, Runtime};
 use tokio::sync::Mutex;
 
+mod adapters;
 mod commands;
 mod deictic;
 mod environment;
