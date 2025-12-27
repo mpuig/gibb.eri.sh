@@ -148,6 +148,7 @@ User: "What is quantum computing?"
 - **System Control**: Volume, Mute, Media keys.
 - **App Launcher**: Opens applications.
 - **Web Search**: Knowledge lookups (Wikipedia by default, extensible to other sources).
+- **The Typer**: Voice-controlled typing. "Type a hello world function" -> simulates keystrokes.
 
 ### Meeting
 - **Transcript Marker**: Inserts `[FLAG]` or `[TODO]` tags into the transcript file.

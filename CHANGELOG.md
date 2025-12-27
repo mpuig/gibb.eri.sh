@@ -33,6 +33,35 @@ A major architectural upgrade adding context-aware tool dispatch and Clean Archi
 
 ---
 
+## [0.8.0] - The "Voice OS" Update
+**Date:** 2025-12-27
+
+Gibberish evolves from a transcription tool into a context-aware OS layer. It now knows *what* you are doing and adapts its capabilities accordingly.
+
+### 🧠 The Context Engine
+- **Context Awareness:** The app now detects your active window (e.g., VS Code, Zoom) and microphone status to infer your "Mode".
+- **Dynamic Tooling:**
+    - **Dev Mode:** Enabled when coding. Tools: `git_voice`, `file_finder`.
+    - **Meeting Mode:** Enabled during calls. Tools: `transcript_marker`, `add_todo`.
+    - **Global Mode:** Always on. Tools: `web_search`, `system_control`.
+- **Implicit Referencing:** Support for "Summarize *this*" (Active Selection) and "What did I just say?" (Transcript History).
+
+### 🤖 Agentic Upgrades
+- **The Typer:** Voice-controlled keyboard input. "Type a function to calculate fibonacci" -> It types into your IDE.
+- **Web Search:** A generic, pluggable web search tool (replaces Wikipedia-only lookup).
+- **Feedback Loop:** The AI now summarizes tool outputs naturally instead of just executing them.
+
+### 🏗 Architecture
+- **Shared Event Contract:** Introduced `crates/events` for type-safe cross-plugin communication.
+- **System Environment:** Abstracted OS calls behind `SystemEnvironment` trait for robust testing.
+- **Blocking I/O Fix:** Ported all synchronous shell calls (`git`, `osascript`) to non-blocking async implementations.
+
+### ⚡️ Features
+- **Menu Bar Mode:** Run Gibberish entirely from the menu bar.
+- **Always-Listening:** New "Rolling Buffer" capability. Hit record to capture the *last 30 seconds* of audio instantly.
+
+---
+
 ## [0.6.0] - The "Less is More" Release
 **Date:** 2025-12-25
 

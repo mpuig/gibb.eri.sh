@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use gibberish_context::{platform::PlatformProvider, ContextChangedEvent, ContextPoller};
 use tauri::plugin::{Builder, TauriPlugin};
-use tauri::{Emitter, Listener, Manager, Runtime};
+use tauri::{Listener, Manager, Runtime};
 use tokio::sync::Mutex;
 
 mod adapters;
@@ -25,6 +25,7 @@ mod wikipedia;
 
 pub use error::{Result, ToolsError};
 
+use adapters::TauriEventBus;
 use gibberish_events::event_names;
 
 pub use functiongemma::{FunctionGemmaRunner, ModelOutput, Proposal};
@@ -65,7 +66,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::request_input_access,
         ])
         .setup(|app, _api| {
-            app.manage(Arc::new(Mutex::new(state::ToolsState::default())));
+            let event_bus = Arc::new(TauriEventBus::new(app.clone()));
+            app.manage(Arc::new(Mutex::new(state::ToolsState::new(event_bus))));
 
             // Start context poller
             start_context_poller(app);
@@ -87,14 +89,13 @@ fn start_context_poller<R: Runtime>(app: &tauri::AppHandle<R>) {
     let provider = Arc::new(PlatformProvider::new());
     let mut poller = ContextPoller::new();
 
-    let app_handle = app.clone();
     let state = app.state::<SharedState>().inner().clone();
 
     let callback: gibberish_context::ContextCallback = Arc::new(
         move |event: ContextChangedEvent| {
             tracing::debug!(mode = %event.mode, app = ?event.active_app, "context changed");
 
-            // Update the context state in SharedState
+            // Update the context state in SharedState and emit event via EventBus
             if let Ok(mut guard) = state.try_lock() {
                 let prev_mode = guard.context.effective_mode();
                 let new_mode = if guard.context.pinned_mode.is_some() {
@@ -120,11 +121,11 @@ fn start_context_poller<R: Runtime>(app: &tauri::AppHandle<R>) {
                     tracing::info!(prev = %prev_mode, new = %new_mode, "Mode changed, updating router manifest");
                     guard.router.update_for_mode(new_mode);
                 }
-            }
 
-            // Emit event to frontend
-            if let Err(e) = app_handle.emit(event_names::CONTEXT_CHANGED, &event) {
-                tracing::warn!("Failed to emit context:changed event: {}", e);
+                // Emit event via EventBus
+                if let Ok(payload) = serde_json::to_value(&event) {
+                    guard.event_bus.emit(event_names::CONTEXT_CHANGED, payload);
+                }
             }
         },
     );

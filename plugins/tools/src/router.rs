@@ -9,19 +9,15 @@ use crate::registry::ToolRegistry;
 use crate::tool_manifest::ToolPolicy;
 use gibberish_context::platform::{get_clipboard_preview, get_selection_preview};
 use gibberish_context::Mode;
-use gibberish_events::StreamCommitEvent;
+use gibberish_events::{event_names, EventBus, StreamCommitEvent};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tauri::{Emitter, Manager, Runtime};
+use tauri::{Manager, Runtime};
 use tokio_util::sync::CancellationToken;
 
-fn emit_router_status<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-    phase: &str,
-    payload: serde_json::Value,
-) {
-    let _ = app.emit(
-        "tools:router_status",
+fn emit_router_status(event_bus: &dyn EventBus, phase: &str, payload: serde_json::Value) {
+    event_bus.emit(
+        event_names::ROUTER_STATUS,
         serde_json::json!({
             "phase": phase,
             "ts_ms": chrono::Utc::now().timestamp_millis(),
@@ -76,10 +72,13 @@ struct RouterSettingsSnapshot {
 async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
     let state = app.state::<crate::SharedState>();
 
-    // Get the notify handle for event-driven wakeup
-    let notify = {
+    // Get the event bus and notify handle
+    let (event_bus, notify) = {
         let guard = state.lock().await;
-        Arc::clone(&guard.router.text_notify)
+        (
+            Arc::clone(&guard.event_bus),
+            Arc::clone(&guard.router.text_notify),
+        )
     };
 
     loop {
@@ -146,13 +145,13 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             let mut guard = state.lock().await;
             if guard.router.pending_text.trim().is_empty() {
                 guard.router.inflight = false;
-                emit_router_status(&app, "idle", serde_json::json!({}));
+                emit_router_status(&*event_bus, "idle", serde_json::json!({}));
                 return;
             }
             continue;
         }
 
-        emit_router_status(&app, "queued", serde_json::json!({ "text": pending_text }));
+        emit_router_status(&*event_bus, "queued", serde_json::json!({ "text": pending_text }));
 
         // Run FunctionGemma inference if model is loaded
         let Some(runner) = runner else {
@@ -176,7 +175,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         );
 
         emit_router_status(
-            &app,
+            &*event_bus,
             "infer_start",
             serde_json::json!({
                 "context": context_snippet
@@ -206,11 +205,11 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         let model_out = match result {
             Ok(out) => {
                 if infer_cancel.is_cancelled() {
-                    emit_router_status(&app, "infer_cancelled", serde_json::json!({}));
+                    emit_router_status(&*event_bus, "infer_cancelled", serde_json::json!({}));
                     continue;
                 }
                 emit_router_status(
-                    &app,
+                    &*event_bus,
                     "infer_done",
                     serde_json::json!({ "raw": out.raw_text }),
                 );
@@ -218,10 +217,10 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             }
             Err(err) => {
                 if infer_cancel.is_cancelled() {
-                    emit_router_status(&app, "infer_cancelled", serde_json::json!({}));
+                    emit_router_status(&*event_bus, "infer_cancelled", serde_json::json!({}));
                     continue;
                 }
-                emit_router_status(&app, "infer_error", serde_json::json!({ "error": err }));
+                emit_router_status(&*event_bus, "infer_error", serde_json::json!({ "error": err }));
                 continue;
             }
         };
@@ -232,7 +231,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         else {
             // No valid tool call found - emit feedback
             emit_router_status(
-                &app,
+                &*event_bus,
                 "no_match",
                 serde_json::json!({
                     "message": "No matching tool found for this request",
@@ -245,7 +244,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         let Some(policy) = policy_for_tool(&tool_policies, &proposal.tool) else {
             // Tool proposed but not available in current mode
             emit_router_status(
-                &app,
+                &*event_bus,
                 "tool_unavailable",
                 serde_json::json!({
                     "tool": proposal.tool,
@@ -259,7 +258,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         let mut args = proposal.args.clone();
         if policy.validate_args(&args).is_err() {
             emit_router_status(
-                &app,
+                &*event_bus,
                 "args_infer_start",
                 serde_json::json!({ "tool": proposal.tool }),
             );
@@ -283,14 +282,14 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                 Ok(v) => {
                     args = v;
                     emit_router_status(
-                        &app,
+                        &*event_bus,
                         "args_infer_done",
                         serde_json::json!({ "tool": proposal.tool }),
                     );
                 }
                 Err(err) => {
                     emit_router_status(
-                        &app,
+                        &*event_bus,
                         "args_infer_error",
                         serde_json::json!({ "tool": proposal.tool, "error": err }),
                     );
@@ -310,7 +309,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                 "Tool not available in current mode, skipping"
             );
             emit_router_status(
-                &app,
+                &*event_bus,
                 "tool_mode_filtered",
                 serde_json::json!({
                     "tool": proposal.tool,
@@ -327,7 +326,6 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         };
 
         let outcome = execute_tool(
-            &app,
             &state,
             &registry,
             &proposal.tool,
@@ -357,7 +355,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             }
             ExecutionOutcome::NotFound => {
                 emit_router_status(
-                    &app,
+                    &*event_bus,
                     "proposal_unsupported",
                     serde_json::json!({ "tool": proposal.tool }),
                 );
@@ -397,7 +395,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                 );
 
                 emit_router_status(
-                    &app,
+                    &*event_bus,
                     "followup_infer_start",
                     serde_json::json!({
                         "after_tool": proposal.tool.as_str(),
@@ -413,7 +411,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
 
                 if let Ok(followup_out) = followup {
                     emit_router_status(
-                        &app,
+                        &*event_bus,
                         "followup_infer_done",
                         serde_json::json!({
                             "raw": followup_out.raw_text,
@@ -432,7 +430,6 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                                 };
 
                             let _ = execute_tool(
-                                &app,
                                 &state,
                                 &registry,
                                 &next.tool,
@@ -464,7 +461,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                 let output_clone = output.clone();
 
                 emit_router_status(
-                    &app,
+                    &*event_bus,
                     "summary_start",
                     serde_json::json!({
                         "tool": tool_name
@@ -481,7 +478,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                 match summary_result {
                     Ok(summary) => {
                         emit_router_status(
-                            &app,
+                            &*event_bus,
                             "summary_done",
                             serde_json::json!({
                                 "tool": proposal.tool,
@@ -489,7 +486,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                             }),
                         );
                         // Emit a dedicated event for the UI to display/speak
-                        let _ = app.emit(
+                        event_bus.emit(
                             "tools:summary",
                             serde_json::json!({
                                 "tool": proposal.tool,
@@ -521,8 +518,14 @@ pub fn on_stt_stream_commit<R: Runtime>(app: &tauri::AppHandle<R>, payload_json:
     tauri::async_runtime::spawn(async move {
         let state = app.state::<crate::SharedState>();
 
+        // Get event bus and emit status
+        let event_bus = {
+            let guard = state.lock().await;
+            Arc::clone(&guard.event_bus)
+        };
+
         emit_router_status(
-            &app,
+            &*event_bus,
             "commit_received",
             serde_json::json!({ "text": payload.text }),
         );
@@ -561,7 +564,7 @@ pub fn on_stt_stream_commit<R: Runtime>(app: &tauri::AppHandle<R>, payload_json:
         notify.notify_one();
 
         if should_spawn {
-            emit_router_status(&app, "worker_start", serde_json::json!({}));
+            emit_router_status(&*event_bus, "worker_start", serde_json::json!({}));
             process_router_queue(app).await;
         }
     });

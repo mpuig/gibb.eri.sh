@@ -3,6 +3,12 @@
 //! This crate defines the formal contracts (DTOs) for events that flow
 //! between plugins. Using shared types prevents runtime deserialization
 //! errors from mismatched field names.
+//!
+//! Also provides the `EventBus` trait for decoupled event emission.
+
+mod bus;
+
+pub use bus::{EmittedEvent, EventBus, EventBusRef, InMemoryEventBus, NullEventBus};
 
 use gibberish_context::Mode;
 use serde::{Deserialize, Serialize};

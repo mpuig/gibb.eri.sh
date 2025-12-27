@@ -6,8 +6,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use gibberish_events::event_names;
-use tauri::{Emitter, Runtime};
+use gibberish_events::{event_names, EventBus};
 
 use crate::environment::RealSystemEnvironment;
 use crate::policy::{CACHE_TTL, DEFAULT_TOOL_COOLDOWN};
@@ -47,8 +46,7 @@ pub enum ExecutionOutcome {
 /// Caching and cooldown are controlled by the tool through its ToolResult:
 /// - If `cooldown_key` is set, repeated calls are throttled
 /// - If `cache_key` is set, results are cached and reused
-pub async fn execute_tool<R: Runtime>(
-    app: &tauri::AppHandle<R>,
+pub async fn execute_tool(
     state: &crate::SharedState,
     registry: &ToolRegistry,
     tool_name: &str,
@@ -60,9 +58,15 @@ pub async fn execute_tool<R: Runtime>(
         return ExecutionOutcome::NotFound;
     };
 
+    // Get event bus reference
+    let event_bus = {
+        let guard = state.lock().await;
+        Arc::clone(&guard.event_bus)
+    };
+
     // If not auto-run, emit proposal and return
     if mode == ExecutionMode::RequireApproval {
-        emit_proposal(app, tool_name, args, evidence);
+        emit_proposal(&*event_bus, tool_name, args, evidence);
         return ExecutionOutcome::ProposalEmitted;
     }
 
@@ -94,8 +98,8 @@ pub async fn execute_tool<R: Runtime>(
 
     // Return cached result if found
     if let Some((cached_payload, event_name)) = check_result {
-        let _ = app.emit(event_name, &cached_payload);
-        emit_tool_done(app, tool_name, true);
+        event_bus.emit(event_name, cached_payload.clone());
+        emit_tool_done(&*event_bus, tool_name, true);
         return ExecutionOutcome::CacheHit(cached_payload);
     }
 
@@ -108,7 +112,7 @@ pub async fn execute_tool<R: Runtime>(
     let env = Arc::new(RealSystemEnvironment::new(client));
     let ctx = ToolContext::new(env, default_lang);
 
-    emit_tool_start(app, tool_name, args);
+    emit_tool_start(&*event_bus, tool_name, args);
 
     match tool.execute(args, &ctx).await {
         Ok(result) => {
@@ -135,12 +139,12 @@ pub async fn execute_tool<R: Runtime>(
             }
 
             // Emit the result using tool-provided event name and payload
-            let _ = app.emit(result.event_name, &result.payload);
-            emit_tool_done(app, tool_name, false);
+            event_bus.emit(result.event_name, result.payload.clone());
+            emit_tool_done(&*event_bus, tool_name, false);
             ExecutionOutcome::Executed(result.payload)
         }
         Err(e) => {
-            emit_tool_error(app, tool_name, &e.to_string());
+            emit_tool_error(&*event_bus, tool_name, &e.to_string());
             ExecutionOutcome::Failed(e)
         }
     }
@@ -165,13 +169,13 @@ fn should_execute(state: &mut ToolsState, tool_name: &str, cooldown_key: &str) -
     true
 }
 
-fn emit_proposal<R: Runtime>(
-    app: &tauri::AppHandle<R>,
+fn emit_proposal(
+    event_bus: &dyn EventBus,
     tool: &str,
     args: &serde_json::Value,
     evidence: &str,
 ) {
-    let _ = app.emit(
+    event_bus.emit(
         event_names::ACTION_PROPOSED,
         serde_json::json!({
             "tool": tool,
@@ -180,7 +184,7 @@ fn emit_proposal<R: Runtime>(
         }),
     );
     emit_router_status(
-        app,
+        event_bus,
         "proposal",
         serde_json::json!({
             "tool": tool,
@@ -190,9 +194,9 @@ fn emit_proposal<R: Runtime>(
     );
 }
 
-fn emit_tool_start<R: Runtime>(app: &tauri::AppHandle<R>, tool: &str, args: &serde_json::Value) {
+fn emit_tool_start(event_bus: &dyn EventBus, tool: &str, args: &serde_json::Value) {
     emit_router_status(
-        app,
+        event_bus,
         "tool_start",
         serde_json::json!({
             "tool": tool,
@@ -201,9 +205,9 @@ fn emit_tool_start<R: Runtime>(app: &tauri::AppHandle<R>, tool: &str, args: &ser
     );
 }
 
-fn emit_tool_done<R: Runtime>(app: &tauri::AppHandle<R>, tool: &str, cached: bool) {
+fn emit_tool_done(event_bus: &dyn EventBus, tool: &str, cached: bool) {
     emit_router_status(
-        app,
+        event_bus,
         "tool_result",
         serde_json::json!({
             "tool": tool,
@@ -212,27 +216,23 @@ fn emit_tool_done<R: Runtime>(app: &tauri::AppHandle<R>, tool: &str, cached: boo
     );
 }
 
-fn emit_tool_error<R: Runtime>(app: &tauri::AppHandle<R>, tool: &str, error: &str) {
+fn emit_tool_error(event_bus: &dyn EventBus, tool: &str, error: &str) {
     emit_router_status(
-        app,
+        event_bus,
         "tool_error",
         serde_json::json!({
             "tool": tool,
             "error": error,
         }),
     );
-    let _ = app.emit(
+    event_bus.emit(
         event_names::TOOL_ERROR,
         serde_json::json!({ "tool": tool, "error": error }),
     );
 }
 
-fn emit_router_status<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-    phase: &str,
-    payload: serde_json::Value,
-) {
-    let _ = app.emit(
+fn emit_router_status(event_bus: &dyn EventBus, phase: &str, payload: serde_json::Value) {
+    event_bus.emit(
         event_names::ROUTER_STATUS,
         serde_json::json!({
             "phase": phase,
