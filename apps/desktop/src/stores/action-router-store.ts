@@ -6,21 +6,22 @@ export interface RouterStatusEvent {
   payload: unknown;
 }
 
-export interface WikiSummaryDto {
+export interface SearchResultDto {
   title: string;
   summary: string;
   url: string;
   thumbnail_url?: string | null;
-  coordinates?: { lat: number; lon: number } | null;
 }
 
-export interface WikipediaCityEvent {
-  city: string;
-  result: WikiSummaryDto;
+export interface SearchResultEvent {
+  query: string;
+  source: string;
+  result: SearchResultDto;
 }
 
-export interface WikipediaCityErrorEvent {
-  city: string;
+export interface SearchErrorEvent {
+  query: string;
+  source: string;
   error: string;
 }
 
@@ -31,13 +32,13 @@ export interface NoMatchEvent {
 
 interface ActionRouterState {
   events: RouterStatusEvent[];
-  lastCityResult: WikipediaCityEvent | null;
-  lastCityError: WikipediaCityErrorEvent | null;
+  lastSearchResult: SearchResultEvent | null;
+  lastSearchError: SearchErrorEvent | null;
   lastNoMatch: NoMatchEvent | null;
 
   addEvent: (event: RouterStatusEvent) => void;
-  setCityResult: (event: WikipediaCityEvent) => void;
-  setCityError: (event: WikipediaCityErrorEvent) => void;
+  setSearchResult: (event: SearchResultEvent) => void;
+  setSearchError: (event: SearchErrorEvent) => void;
   setNoMatch: (event: NoMatchEvent) => void;
   clearNoMatch: () => void;
   clear: () => void;
@@ -47,8 +48,8 @@ const MAX_EVENTS = 50;
 
 export const useActionRouterStore = create<ActionRouterState>((set) => ({
   events: [],
-  lastCityResult: null,
-  lastCityError: null,
+  lastSearchResult: null,
+  lastSearchError: null,
   lastNoMatch: null,
 
   addEvent: (event) =>
@@ -56,16 +57,16 @@ export const useActionRouterStore = create<ActionRouterState>((set) => ({
       events: [...state.events, event].slice(-MAX_EVENTS),
     })),
 
-  setCityResult: (event) =>
+  setSearchResult: (event) =>
     set(() => ({
-      lastCityResult: event,
-      lastCityError: null,
+      lastSearchResult: event,
+      lastSearchError: null,
       lastNoMatch: null,
     })),
 
-  setCityError: (event) =>
+  setSearchError: (event) =>
     set(() => ({
-      lastCityError: event,
+      lastSearchError: event,
     })),
 
   setNoMatch: (event) =>
@@ -81,8 +82,8 @@ export const useActionRouterStore = create<ActionRouterState>((set) => ({
   clear: () =>
     set(() => ({
       events: [],
-      lastCityResult: null,
-      lastCityError: null,
+      lastSearchResult: null,
+      lastSearchError: null,
       lastNoMatch: null,
     })),
 }));

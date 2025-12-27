@@ -17,7 +17,7 @@ function previewPayload(payload: unknown): string {
 }
 
 export const ActionRouterPanel = memo(function ActionRouterPanel() {
-  const { events, lastCityResult, lastCityError, lastNoMatch, clear } = useActionRouterStore();
+  const { events, lastSearchResult, lastSearchError, lastNoMatch, clear } = useActionRouterStore();
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -42,40 +42,40 @@ export const ActionRouterPanel = memo(function ActionRouterPanel() {
           </button>
         </div>
 
-        {lastCityResult && (
+        {lastSearchResult && (
           <div
             className="rounded-lg p-3 mb-3"
             style={{ background: "var(--color-bg-secondary)" }}
           >
             <div className="text-xs mb-1" style={{ color: "var(--color-text-quaternary)" }}>
-              Wikipedia: {lastCityResult.city}
+              {lastSearchResult.source}: {lastSearchResult.query}
             </div>
             <div className="text-sm font-medium mb-1" style={{ color: "var(--color-text-primary)" }}>
-              {lastCityResult.result.title}
+              {lastSearchResult.result.title}
             </div>
             <div className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
-              {lastCityResult.result.summary}
+              {lastSearchResult.result.summary}
             </div>
             <a
-              href={lastCityResult.result.url}
+              href={lastSearchResult.result.url}
               className="text-xs mt-2 inline-block"
               style={{ color: "var(--color-accent)" }}
             >
-              {lastCityResult.result.url}
+              {lastSearchResult.result.url}
             </a>
           </div>
         )}
 
-        {lastCityError && (
+        {lastSearchError && (
           <div
             className="rounded-lg p-3 mb-3"
             style={{ background: "rgba(255, 69, 58, 0.10)", border: "1px solid rgba(255, 69, 58, 0.25)" }}
           >
             <div className="text-xs mb-1" style={{ color: "var(--color-text-quaternary)" }}>
-              Wikipedia error: {lastCityError.city}
+              {lastSearchError.source} error: {lastSearchError.query}
             </div>
             <div className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
-              {lastCityError.error}
+              {lastSearchError.error}
             </div>
           </div>
         )}

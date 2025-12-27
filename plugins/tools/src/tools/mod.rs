@@ -10,6 +10,7 @@ mod git_voice;
 mod help;
 mod system_control;
 mod transcript_marker;
+mod web_search;
 mod wikipedia;
 
 pub use add_todo::AddTodoTool;
@@ -19,7 +20,7 @@ pub use git_voice::GitVoiceTool;
 pub use help::{ToolInfo, ToolInfoProvider};
 pub use system_control::SystemControlTool;
 pub use transcript_marker::TranscriptMarkerTool;
-pub use wikipedia::WikipediaTool;
+pub use web_search::WebSearchTool;
 
 use async_trait::async_trait;
 use gibberish_context::Mode;

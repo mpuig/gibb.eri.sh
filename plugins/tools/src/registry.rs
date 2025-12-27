@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::tool_manifest::ToolPolicy;
 use crate::tools::{
     AddTodoTool, AppLauncherTool, FileFinderTool, GitVoiceTool, SystemControlTool,
-    Tool, ToolDefinition, ToolInfo, ToolInfoProvider, TranscriptMarkerTool, WikipediaTool,
+    Tool, ToolDefinition, ToolInfo, ToolInfoProvider, TranscriptMarkerTool, WebSearchTool,
 };
 use gibberish_context::Mode;
 
@@ -20,7 +20,7 @@ pub struct ToolRegistry {
 
 /// All known tool names (for building a complete registry).
 const ALL_TOOL_NAMES: &[&str] = &[
-    "wikipedia_city_lookup",
+    "web_search",
     "system_control",
     "app_launcher",
     "git_voice",
@@ -171,8 +171,8 @@ impl ToolRegistry {
             OUTPUT FORMAT:\n\
             <start_function_call>call:TOOL_NAME{{arg:<escape>value<escape>}}<end_function_call>\n\
             \n\
-            EXAMPLE: User says 'tell me about Barcelona'\n\
-            <start_function_call>call:wikipedia_city_lookup{{city:<escape>Barcelona<escape>}}<end_function_call>\n"
+            EXAMPLE: User says 'what is quantum computing'\n\
+            <start_function_call>call:web_search{{query:<escape>quantum computing<escape>}}<end_function_call>\n"
         )
     }
 
@@ -233,7 +233,7 @@ impl std::fmt::Debug for ToolRegistry {
 fn create_tool(name: &str) -> Option<Arc<dyn Tool>> {
     match name {
         // Global tools
-        "wikipedia_city_lookup" => Some(Arc::new(WikipediaTool)),
+        "web_search" => Some(Arc::new(WebSearchTool)),
         "system_control" => Some(Arc::new(SystemControlTool)),
         "app_launcher" => Some(Arc::new(AppLauncherTool)),
         // Dev mode tools
@@ -258,9 +258,9 @@ mod tests {
 
     #[test]
     fn test_create_known_tool() {
-        let tool = create_tool("wikipedia_city_lookup");
+        let tool = create_tool("web_search");
         assert!(tool.is_some());
-        assert_eq!(tool.unwrap().name(), "wikipedia_city_lookup");
+        assert_eq!(tool.unwrap().name(), "web_search");
     }
 
     #[test]
@@ -273,12 +273,12 @@ mod tests {
     fn test_registry_from_policies() {
         let mut policies = HashMap::new();
         policies.insert(
-            "wikipedia_city_lookup".to_string(),
+            "web_search".to_string(),
             ToolPolicy {
                 read_only: true,
                 default_lang: Some("en".to_string()),
-                default_sentences: Some(2),
-                required_args: vec!["city".to_string()],
+                default_sentences: Some(3),
+                required_args: vec!["query".to_string()],
                 arg_types: HashMap::new(),
             },
         );
@@ -295,7 +295,7 @@ mod tests {
 
         let registry = ToolRegistry::from_policies(&policies);
 
-        assert!(registry.contains("wikipedia_city_lookup"));
+        assert!(registry.contains("web_search"));
         assert!(!registry.contains("unknown_tool"));
     }
 }

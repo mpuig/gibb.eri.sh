@@ -6,8 +6,8 @@ import { normalizeSherpaDisplayText } from "../lib/asr-text";
 import {
   useActionRouterStore,
   type RouterStatusEvent,
-  type WikipediaCityEvent,
-  type WikipediaCityErrorEvent,
+  type SearchResultEvent,
+  type SearchErrorEvent,
   type NoMatchEvent,
 } from "../stores/action-router-store";
 import { TranscriptSegment } from "./use-stt";
@@ -280,25 +280,25 @@ export function useRecording() {
       );
       if (mounted) unlisteners.push(routerStatus);
 
-      const wikiCity = await listen<WikipediaCityEvent>(
-        "tools:wikipedia_city",
+      const searchResult = await listen<SearchResultEvent>(
+        "tools:search_result",
         (event) => {
           if (!mounted) return;
-          useActionRouterStore.getState().setCityResult(event.payload);
-          console.log("[router] wikipedia_city", event.payload.city);
+          useActionRouterStore.getState().setSearchResult(event.payload);
+          console.log("[router] search_result", event.payload.query, event.payload.source);
         }
       );
-      if (mounted) unlisteners.push(wikiCity);
+      if (mounted) unlisteners.push(searchResult);
 
-      const wikiErr = await listen<WikipediaCityErrorEvent>(
-        "tools:wikipedia_city_error",
+      const searchErr = await listen<SearchErrorEvent>(
+        "tools:search_error",
         (event) => {
           if (!mounted) return;
-          useActionRouterStore.getState().setCityError(event.payload);
-          console.log("[router] wikipedia_city_error", event.payload.city, event.payload.error);
+          useActionRouterStore.getState().setSearchError(event.payload);
+          console.log("[router] search_error", event.payload.query, event.payload.error);
         }
       );
-      if (mounted) unlisteners.push(wikiErr);
+      if (mounted) unlisteners.push(searchErr);
     };
 
     setupListeners();

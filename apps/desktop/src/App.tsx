@@ -42,12 +42,12 @@ function App() {
     }
   }, [currentModel, isListening, isRecording]);
 
-  const { events, lastCityResult, lastCityError, lastNoMatch } = useActionRouterStore();
+  const { events, lastSearchResult, lastSearchError, lastNoMatch } = useActionRouterStore();
   const [showSettings, setShowSettings] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const hasActionResult = lastCityResult !== null || lastCityError !== null || lastNoMatch !== null;
+  const hasActionResult = lastSearchResult !== null || lastSearchError !== null || lastNoMatch !== null;
   const hasRouterActivity = events.length > 0 || hasActionResult;
 
   if (!hasCompletedOnboarding) {
