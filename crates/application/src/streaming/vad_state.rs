@@ -121,7 +121,7 @@ impl VadState {
     }
 
     /// Check if currently in speech.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn in_speech(&self) -> bool {
         self.in_speech
     }

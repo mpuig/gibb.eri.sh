@@ -3,8 +3,6 @@
 //! Abstracts OS capabilities behind a trait, allowing tools to be unit-tested
 //! without actually executing system commands.
 
-#![allow(dead_code)]
-
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -31,10 +29,6 @@ pub enum CommandError {
 
     #[error("permission denied: {0}")]
     PermissionDenied(String),
-
-    #[error("path not safe: {0}")]
-    #[allow(dead_code)]
-    UnsafePath(String),
 }
 
 /// Abstraction over system capabilities for testability.

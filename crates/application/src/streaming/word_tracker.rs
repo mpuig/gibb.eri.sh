@@ -71,7 +71,6 @@ impl WordTracker {
     }
 
     /// Get the end timestamp of committed content.
-    #[allow(dead_code)]
     pub fn committed_end_ms(&self) -> u64 {
         self.committed_end_ms
     }

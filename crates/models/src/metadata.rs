@@ -163,18 +163,6 @@ pub fn get_metadata(model_id: &str) -> Option<&'static ModelMetadata> {
     MODEL_REGISTRY.get(model_id)
 }
 
-/// Get all registered model IDs.
-#[allow(dead_code)]
-pub fn all_model_ids() -> impl Iterator<Item = &'static str> {
-    MODEL_REGISTRY.keys().copied()
-}
-
-/// Check if a model ID is registered.
-#[allow(dead_code)]
-pub fn is_registered(model_id: &str) -> bool {
-    MODEL_REGISTRY.contains_key(model_id)
-}
-
 // Download verification functions
 
 fn is_whisper_ggml_downloaded(dir: &Path) -> bool {

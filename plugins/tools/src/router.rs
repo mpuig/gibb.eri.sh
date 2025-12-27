@@ -401,7 +401,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         // propose a next tool (e.g., `web_search` -> `typer`) based on the tool output.
         // Uses formal pipeline with depth limits (see pipeline.rs).
         if let Some(ref output) = tool_output {
-            let pipeline_ctx = PipelineContext::new(pending_text.clone(), developer_context.clone());
+            let pipeline_ctx = PipelineContext::new();
 
             // Check depth limit before attempting followup
             if !pipeline_ctx.can_chain() {

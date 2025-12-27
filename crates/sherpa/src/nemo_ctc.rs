@@ -18,8 +18,7 @@ pub struct SherpaNemoCtcEngine {
     recognizer: Mutex<*const sherpa_rs_sys::SherpaOnnxOfflineRecognizer>,
     model_name: String,
     // Keep CStrings alive for the duration of the recognizer
-    #[allow(dead_code)]
-    strings: NemoCtcStrings,
+    _strings: NemoCtcStrings,
 }
 
 #[derive(Debug)]
@@ -140,7 +139,7 @@ impl SherpaNemoCtcEngine {
         Ok(Self {
             recognizer: Mutex::new(recognizer),
             model_name,
-            strings,
+            _strings: strings,
         })
     }
 

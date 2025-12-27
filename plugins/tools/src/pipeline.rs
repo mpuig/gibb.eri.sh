@@ -38,22 +38,14 @@ pub struct PipelineStep {
 /// Context passed through the pipeline.
 #[derive(Debug, Clone)]
 pub struct PipelineContext {
-    /// Original user text
-    pub user_text: String,
-    /// Developer context for inference
-    pub developer_context: std::sync::Arc<str>,
     /// Current chain depth
     pub depth: usize,
 }
 
 impl PipelineContext {
     /// Create new pipeline context for primary inference.
-    pub fn new(user_text: String, developer_context: std::sync::Arc<str>) -> Self {
-        Self {
-            user_text,
-            developer_context,
-            depth: 0,
-        }
+    pub fn new() -> Self {
+        Self { depth: 0 }
     }
 
     /// Check if we can continue chaining.
@@ -61,14 +53,7 @@ impl PipelineContext {
         self.depth < MAX_CHAIN_DEPTH
     }
 
-    /// Advance to next depth level for followup.
-    pub fn next_depth(&self) -> Self {
-        Self {
-            user_text: self.user_text.clone(),
-            developer_context: self.developer_context.clone(),
-            depth: self.depth + 1,
-        }
-    }
+    // Depth advancement is handled by callers when constructing followup steps.
 }
 
 /// Decision after a tool execution.
@@ -137,33 +122,21 @@ mod tests {
 
     #[test]
     fn test_can_chain_at_zero_depth() {
-        let ctx = PipelineContext::new("test".to_string(), "ctx".into());
+        let ctx = PipelineContext::new();
         assert!(ctx.can_chain());
     }
 
     #[test]
     fn test_cannot_chain_at_max_depth() {
         let ctx = PipelineContext {
-            user_text: "test".to_string(),
-            developer_context: "ctx".into(),
             depth: MAX_CHAIN_DEPTH,
         };
         assert!(!ctx.can_chain());
     }
 
     #[test]
-    fn test_depth_increments() {
-        let ctx = PipelineContext::new("test".to_string(), "ctx".into());
-        assert_eq!(ctx.depth, 0);
-        let next = ctx.next_depth();
-        assert_eq!(next.depth, 1);
-    }
-
-    #[test]
     fn test_chain_decision_respects_depth_limit() {
         let ctx = PipelineContext {
-            user_text: "test".to_string(),
-            developer_context: "ctx".into(),
             depth: MAX_CHAIN_DEPTH,
         };
         let proposals = vec![make_proposal("typer", 0.9)];
@@ -174,7 +147,7 @@ mod tests {
 
     #[test]
     fn test_chain_decision_finds_valid_proposal() {
-        let ctx = PipelineContext::new("test".to_string(), "ctx".into());
+        let ctx = PipelineContext::new();
         let proposals = vec![
             make_proposal("blocked_tool", 0.95),
             make_proposal("allowed_tool", 0.9),
@@ -192,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_chain_decision_respects_confidence() {
-        let ctx = PipelineContext::new("test".to_string(), "ctx".into());
+        let ctx = PipelineContext::new();
         let proposals = vec![make_proposal("typer", 0.3)];
 
         let decision = should_chain(&ctx, &proposals, 0.5, |_| true);
@@ -201,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_chain_decision_stops_when_no_proposals() {
-        let ctx = PipelineContext::new("test".to_string(), "ctx".into());
+        let ctx = PipelineContext::new();
         let decision = should_chain(&ctx, &[], 0.5, |_| true);
         assert!(matches!(decision, ChainDecision::Stop));
     }

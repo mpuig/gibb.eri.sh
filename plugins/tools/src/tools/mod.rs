@@ -9,7 +9,6 @@ mod add_todo;
 mod app_launcher;
 mod file_finder;
 mod git_voice;
-mod help;
 mod paste;
 mod system_control;
 mod transcript_marker;
@@ -20,7 +19,6 @@ pub use add_todo::AddTodoTool;
 pub use app_launcher::AppLauncherTool;
 pub use file_finder::FileFinderTool;
 pub use git_voice::GitVoiceTool;
-pub use help::{ToolInfo, ToolInfoProvider};
 pub use paste::PasteTool;
 pub use system_control::SystemControlTool;
 pub use transcript_marker::TranscriptMarkerTool;
@@ -98,7 +96,6 @@ pub struct ToolResult {
     pub cache_key: Option<String>,
     /// Optional cooldown key. If set, repeated calls with same key are throttled.
     /// Typically same as cache_key but tools can customize.
-    #[allow(dead_code)]
     pub cooldown_key: Option<String>,
 }
 
@@ -109,7 +106,6 @@ pub enum ToolError {
     MissingArg(&'static str),
 
     #[error("invalid argument: {field} - {reason}")]
-    #[allow(dead_code)]
     InvalidArg { field: &'static str, reason: String },
 
     #[error("execution failed: {0}")]
@@ -205,7 +201,6 @@ pub trait Tool: Send + Sync {
 
     /// Generate a cache key for the given arguments.
     /// Returns None if caching is not supported for this tool.
-    #[allow(dead_code)]
     fn cache_key(&self, _args: &serde_json::Value) -> Option<String> {
         None
     }
@@ -213,7 +208,6 @@ pub trait Tool: Send + Sync {
     /// Generate a cooldown key for the given arguments.
     ///
     /// By default, cooldown follows the same key as caching.
-    #[allow(dead_code)]
     fn cooldown_key(&self, args: &serde_json::Value) -> Option<String> {
         self.cache_key(args)
     }

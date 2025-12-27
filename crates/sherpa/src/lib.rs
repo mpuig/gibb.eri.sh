@@ -146,10 +146,8 @@ struct ModelStrings {
 
 pub struct SherpaStreamingEngine {
     model_name: String,
-    #[allow(dead_code)]
-    latency_profile: LatencyProfile,
-    #[allow(dead_code)]
-    strings: ModelStrings,
+    _latency_profile: LatencyProfile,
+    _strings: ModelStrings,
     state: Mutex<StreamingState>,
 }
 
@@ -285,8 +283,8 @@ impl SherpaStreamingEngine {
 
         Ok(Self {
             model_name,
-            latency_profile,
-            strings,
+            _latency_profile: latency_profile,
+            _strings: strings,
             state: Mutex::new(StreamingState {
                 recognizer: recognizer_handle,
                 stream,

@@ -282,7 +282,6 @@ impl Clone for GenericSkillTool {
             event_name: self.event_name.clone(),
             modes: self.modes.clone(),
             read_only: self.read_only,
-            always_ask: self.always_ask,
             timeout_secs: self.timeout_secs,
             tool_def: Arc::clone(&self.tool_def),
             skill_name: self.skill_name.clone(),

@@ -3,6 +3,11 @@ name = "gibberish-context"
 version.workspace = true
 edition.workspace = true
 
+[features]
+# Some upstream macros (e.g., from `objc`) reference `cfg(feature = "cargo-clippy")`.
+# Declaring it here avoids `unexpected_cfgs` warnings under `check-cfg`.
+cargo-clippy = []
+
 [dependencies]
 tracing.workspace = true
 serde = { workspace = true, features = ["derive"] }

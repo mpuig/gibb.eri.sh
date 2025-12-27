@@ -1,3 +1,4 @@
+#[cfg(test)]
 use crate::tools::ToolDefinition;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -148,6 +149,7 @@ pub fn validate_and_compile(manifest_json: &str) -> Result<CompiledManifest, Str
 }
 
 /// Generate FunctionGemma declarations from tool definitions.
+#[cfg(test)]
 pub fn generate_declarations(tools: &[ToolDefinition]) -> String {
     let mut declarations = String::new();
     for tool in tools {
@@ -161,6 +163,7 @@ pub fn generate_declarations(tools: &[ToolDefinition]) -> String {
     declarations
 }
 
+#[cfg(test)]
 pub fn policy_from_definition(tool: &ToolDefinition) -> ToolPolicy {
     let schema_info = extract_schema_info(&tool.args_schema, 0).unwrap_or_else(|_| SchemaInfo {
         default_lang: None,

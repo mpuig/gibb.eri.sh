@@ -10,7 +10,7 @@ use crate::skill_loader::SkillManager;
 use crate::tool_manifest::ToolPolicy;
 use crate::tools::{
     AddTodoTool, AppLauncherTool, FileFinderTool, GitVoiceTool, PasteTool, SystemControlTool, Tool,
-    ToolDefinition, ToolInfo, ToolInfoProvider, TranscriptMarkerTool, TyperTool, WebSearchTool,
+    ToolDefinition, TranscriptMarkerTool, TyperTool, WebSearchTool,
 };
 use gibberish_context::Mode;
 
@@ -92,13 +92,13 @@ impl ToolRegistry {
     }
 
     /// Check if a tool is registered.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn contains(&self, name: &str) -> bool {
         self.tools.contains_key(name)
     }
 
     /// Get all registered tool names.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.tools.keys().map(|s| s.as_str())
     }
@@ -113,7 +113,7 @@ impl ToolRegistry {
     }
 
     /// Get tool names available in the given mode.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn names_for_mode(&self, mode: Mode) -> Vec<&str> {
         self.tools
             .iter()
@@ -132,7 +132,7 @@ impl ToolRegistry {
     }
 
     /// Build tool policies for the given mode.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn policies_for_mode(&self, mode: Mode) -> HashMap<String, ToolPolicy> {
         self.tools
             .iter()
@@ -211,42 +211,8 @@ impl ToolRegistry {
         )
     }
 
-    /// Build FunctionGemma function declarations for the given mode.
-    ///
-    /// Outputs declarations in the FunctionGemma format that our parser expects:
-    /// `<start_function_declaration>declaration:TOOL{...}<end_function_declaration>`
-    #[allow(dead_code)]
-    pub fn functiongemma_declarations_for_mode(&self, mode: Mode) -> String {
-        let manifest_json = self.manifest_json_for_mode(mode);
-        match crate::tool_manifest::validate_and_compile(&manifest_json) {
-            Ok(compiled) => compiled.function_declarations,
-            Err(err) => {
-                tracing::warn!(mode = %mode, error = %err, "Failed to compile tool manifest for FunctionGemma declarations");
-                String::new()
-            }
-        }
-    }
-}
-
-/// Implement ToolInfoProvider for ToolRegistry.
-/// This allows the help tool to query available tools without tight coupling.
-impl ToolInfoProvider for ToolRegistry {
-    fn get_tools_for_mode(&self, mode: Mode) -> Vec<ToolInfo> {
-        self.tools
-            .values()
-            .filter(|t| t.is_available_in(mode))
-            .map(|t| ToolInfo {
-                name: t.name().to_string(),
-                description: t.description().to_string(),
-                examples: t.example_phrases().iter().map(|s| s.to_string()).collect(),
-                modes: if t.modes().is_empty() {
-                    vec!["Global".to_string()]
-                } else {
-                    t.modes().iter().map(|m| m.to_string()).collect()
-                },
-            })
-            .collect()
-    }
+    // `functiongemma_declarations_for_mode` is intentionally omitted: production code
+    // compiles declarations from the manifest directly in the router.
 }
 
 impl std::fmt::Debug for ToolRegistry {

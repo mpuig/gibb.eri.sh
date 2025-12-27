@@ -33,8 +33,6 @@ pub struct GenericSkillTool {
     pub(crate) event_name: String,
     pub(crate) modes: Vec<Mode>,
     pub(crate) read_only: bool,
-    #[allow(dead_code)]
-    pub(crate) always_ask: bool,
     pub(crate) timeout_secs: u32,
     pub(crate) tool_def: Arc<SkillToolDefinition>,
     pub(crate) skill_name: String,
@@ -54,7 +52,6 @@ impl GenericSkillTool {
             event_name,
             modes,
             read_only: skill.read_only,
-            always_ask: skill.always_ask,
             timeout_secs: skill.timeout,
             tool_def: Arc::new(tool.clone()),
             skill_name: skill.name.clone(),
