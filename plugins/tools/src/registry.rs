@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::tool_manifest::ToolPolicy;
 use crate::tools::{
-    AddTodoTool, AppLauncherTool, FileFinderTool, GitVoiceTool, SystemControlTool, Tool,
+    AddTodoTool, AppLauncherTool, FileFinderTool, GitVoiceTool, PasteTool, SystemControlTool, Tool,
     ToolDefinition, ToolInfo, ToolInfoProvider, TranscriptMarkerTool, TyperTool, WebSearchTool,
 };
 use gibberish_context::Mode;
@@ -28,6 +28,7 @@ const ALL_TOOL_NAMES: &[&str] = &[
     "add_todo",
     "transcript_marker",
     "typer",
+    "paste",
 ];
 
 impl ToolRegistry {
@@ -173,6 +174,7 @@ impl ToolRegistry {
             TOOL SELECTION:\n\
             - open/launch/switch to app → app_launcher\n\
             - type/write text → typer\n\
+            - paste this/paste clipboard → paste\n\
             - search/what is/tell me about → web_search\n\
             - volume/mute/sleep/dnd → system_control\n\
             - git commands (status, commit, push, diff) → git_voice\n\
@@ -245,6 +247,7 @@ fn create_tool(name: &str) -> Option<Arc<dyn Tool>> {
         "transcript_marker" => Some(Arc::new(TranscriptMarkerTool)),
         // Global tools (with special permissions)
         "typer" => Some(Arc::new(TyperTool)),
+        "paste" => Some(Arc::new(PasteTool)),
         _ => None,
     }
 }

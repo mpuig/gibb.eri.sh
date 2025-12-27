@@ -2,7 +2,7 @@
 
 use crate::error::InputError;
 use crate::FocusCheckerRef;
-use enigo::{Enigo, Keyboard, Settings};
+use enigo::{Direction, Enigo, Key, Keyboard, Settings};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -193,6 +193,43 @@ impl InputController {
                 preview: false,
             },
         )
+    }
+
+    /// Simulate a paste operation (Cmd+V on macOS, Ctrl+V elsewhere).
+    ///
+    /// This is a quick operation that triggers the system paste shortcut.
+    /// Unlike `type_text`, this preserves formatting and handles large text.
+    pub fn paste(&mut self) -> Result<(), InputError> {
+        // Check abort flag
+        if self.abort_flag.load(Ordering::SeqCst) {
+            return Err(InputError::Aborted);
+        }
+
+        // Use Meta (Cmd) on macOS, Control on other platforms
+        #[cfg(target_os = "macos")]
+        let modifier = Key::Meta;
+        #[cfg(not(target_os = "macos"))]
+        let modifier = Key::Control;
+
+        // Press modifier
+        self.enigo
+            .key(modifier, Direction::Press)
+            .map_err(|e| InputError::KeyFailed(e.to_string()))?;
+
+        // Small delay to ensure modifier is registered
+        thread::sleep(Duration::from_millis(10));
+
+        // Press and release V
+        self.enigo
+            .key(Key::Unicode('v'), Direction::Click)
+            .map_err(|e| InputError::KeyFailed(e.to_string()))?;
+
+        // Release modifier
+        self.enigo
+            .key(modifier, Direction::Release)
+            .map_err(|e| InputError::KeyFailed(e.to_string()))?;
+
+        Ok(())
     }
 }
 
