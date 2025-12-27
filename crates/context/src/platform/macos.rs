@@ -155,7 +155,7 @@ pub fn get_clipboard_preview() -> Option<String> {
 }
 
 /// Known browser bundle IDs for URL detection.
-pub const BROWSER_BUNDLE_IDS: &[&str] = &[
+const BROWSER_BUNDLE_IDS: &[&str] = &[
     "com.apple.Safari",
     "com.google.Chrome",
     "org.mozilla.firefox",
@@ -167,18 +167,26 @@ pub const BROWSER_BUNDLE_IDS: &[&str] = &[
 ];
 
 /// Check if the given bundle ID is a browser.
-pub fn is_browser(bundle_id: &str) -> bool {
+fn is_browser(bundle_id: &str) -> bool {
     BROWSER_BUNDLE_IDS.iter().any(|&b| b == bundle_id)
 }
 
-/// Get the active browser tab URL.
+/// Get the active browser tab URL if a browser is focused.
 ///
-/// Uses AppleScript to query the frontmost browser for its active tab URL.
+/// Checks if the frontmost app is a browser and fetches its active tab URL.
 /// Returns None if:
 /// - The frontmost app is not a supported browser
 /// - The browser is in private/incognito mode
 /// - AppleScript execution fails
-pub fn get_browser_url(bundle_id: &str) -> Option<String> {
+///
+/// This is the public API - callers don't need to know about bundle IDs.
+pub fn get_active_browser_url() -> Option<String> {
+    let app = get_frontmost_app()?;
+    get_browser_url_internal(&app.bundle_id)
+}
+
+/// Internal: Get browser URL for a specific bundle ID.
+fn get_browser_url_internal(bundle_id: &str) -> Option<String> {
     if !is_browser(bundle_id) {
         return None;
     }
