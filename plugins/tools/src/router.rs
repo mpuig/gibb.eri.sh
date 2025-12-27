@@ -58,6 +58,72 @@ fn is_tool_available_in_mode(registry: &ToolRegistry, tool_name: &str, mode: Mod
         .unwrap_or(false)
 }
 
+/// Validate tool args and attempt repair via inference if validation fails.
+/// Returns Some(args) if valid/repaired, None if repair failed.
+async fn validate_and_repair_args(
+    state: &tokio::sync::Mutex<crate::state::ToolsState>,
+    event_bus: &Arc<dyn EventBus>,
+    developer_context: &Arc<str>,
+    pending_text: &str,
+    policy: &ToolPolicy,
+    tool_name: &str,
+    args: serde_json::Value,
+    is_followup: bool,
+) -> Option<serde_json::Value> {
+    // If args are already valid, return them as-is
+    if policy.validate_args(&args).is_ok() {
+        return Some(args);
+    }
+
+    let phase_prefix = if is_followup { "followup_" } else { "" };
+
+    emit_router_status(
+        &**event_bus,
+        &format!("{}args_infer_start", phase_prefix),
+        serde_json::json!({ "tool": tool_name }),
+    );
+
+    // Get runner for args repair
+    let runner = {
+        let guard = state.lock().await;
+        guard
+            .functiongemma
+            .model
+            .as_ref()
+            .map(|m| std::sync::Arc::clone(&m.runner))
+    }?;
+
+    let dev_ctx = developer_context.clone();
+    let tool = tool_name.to_string();
+    let text = pending_text.to_string();
+
+    let repaired = tokio::task::spawn_blocking(move || {
+        runner.infer_args_object(dev_ctx.as_ref(), &tool, &text)
+    })
+    .await
+    .map_err(|e| e.to_string())
+    .and_then(|r| r.map_err(|e| e.to_string()));
+
+    match repaired {
+        Ok(v) => {
+            emit_router_status(
+                &**event_bus,
+                &format!("{}args_infer_done", phase_prefix),
+                serde_json::json!({ "tool": tool_name }),
+            );
+            Some(v)
+        }
+        Err(err) => {
+            emit_router_status(
+                &**event_bus,
+                &format!("{}args_infer_error", phase_prefix),
+                serde_json::json!({ "tool": tool_name, "error": err }),
+            );
+            None
+        }
+    }
+}
+
 /// Snapshot of router settings for use during processing.
 #[derive(Debug)]
 struct RouterSettingsSnapshot {
@@ -187,7 +253,6 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         let pending_text_for_model = pending_text.clone();
         let developer_context_for_model: Arc<str> = Arc::from(enriched_developer_context);
         let infer_cancel_for_model = infer_cancel.clone();
-        let runner_for_args = std::sync::Arc::clone(&runner);
 
         let result = tokio::task::spawn_blocking(move || {
             if infer_cancel_for_model.is_cancelled() {
@@ -257,48 +322,20 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         };
 
         // Validate and potentially repair args
-        let mut args = proposal.args.clone();
-        if policy.validate_args(&args).is_err() {
-            emit_router_status(
-                &*event_bus,
-                "args_infer_start",
-                serde_json::json!({ "tool": proposal.tool }),
-            );
-
-            let developer_context_for_args = developer_context.clone();
-            let pending_text_for_args = pending_text.clone();
-            let tool_name_for_args = proposal.tool.clone();
-
-            let repaired_args = tokio::task::spawn_blocking(move || {
-                runner_for_args.infer_args_object(
-                    developer_context_for_args.as_ref(),
-                    &tool_name_for_args,
-                    &pending_text_for_args,
-                )
-            })
-            .await
-            .map_err(|e| e.to_string())
-            .and_then(|r| r.map_err(|e| e.to_string()));
-
-            match repaired_args {
-                Ok(v) => {
-                    args = v;
-                    emit_router_status(
-                        &*event_bus,
-                        "args_infer_done",
-                        serde_json::json!({ "tool": proposal.tool }),
-                    );
-                }
-                Err(err) => {
-                    emit_router_status(
-                        &*event_bus,
-                        "args_infer_error",
-                        serde_json::json!({ "tool": proposal.tool, "error": err }),
-                    );
-                    continue;
-                }
-            }
-        }
+        let Some(args) = validate_and_repair_args(
+            &state,
+            &event_bus,
+            &developer_context,
+            &pending_text,
+            policy,
+            &proposal.tool,
+            proposal.args.clone(),
+            false, // not a followup
+        )
+        .await
+        else {
+            continue;
+        };
 
         // Build registry and check mode availability
         let registry = ToolRegistry::from_policies(&tool_policies);
@@ -406,6 +443,9 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                     }),
                 );
 
+                // Clone for args repair (after move into closure)
+                let developer_context_for_args = developer_context.clone();
+
                 let followup = tokio::task::spawn_blocking(move || {
                     runner.infer_once(developer_context.as_ref(), &followup_text)
                 })
@@ -426,23 +466,38 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                         find_best_proposal(&followup_out.proposals, &tool_policies, min_confidence)
                     {
                         if let Some(next_policy) = policy_for_tool(&tool_policies, &next.tool) {
-                            let next_execution_mode = if router_settings.auto_run_all
-                                || (next_policy.read_only && router_settings.auto_run_read_only)
-                            {
-                                ExecutionMode::AutoRun
-                            } else {
-                                ExecutionMode::RequireApproval
-                            };
-
-                            let _ = execute_tool(
+                            // Validate and repair args (same logic as primary flow)
+                            let validated_args = validate_and_repair_args(
                                 &state,
-                                &registry,
+                                &event_bus,
+                                &developer_context_for_args,
+                                &pending_text,
+                                next_policy,
                                 &next.tool,
-                                &next.args,
-                                &next.evidence,
-                                next_execution_mode,
+                                next.args.clone(),
+                                true, // is_followup
                             )
                             .await;
+
+                            if let Some(next_args) = validated_args {
+                                let next_execution_mode = if router_settings.auto_run_all
+                                    || (next_policy.read_only && router_settings.auto_run_read_only)
+                                {
+                                    ExecutionMode::AutoRun
+                                } else {
+                                    ExecutionMode::RequireApproval
+                                };
+
+                                let _ = execute_tool(
+                                    &state,
+                                    &registry,
+                                    &next.tool,
+                                    &next_args,
+                                    &next.evidence,
+                                    next_execution_mode,
+                                )
+                                .await;
+                            }
                         }
                     }
                 }

@@ -104,7 +104,7 @@ impl Default for RouterState {
         Self {
             enabled: true,
             auto_run_read_only: true,
-            auto_run_all: true, // Default to true for testing; disable in production
+            auto_run_all: false, // Safe by default; enable explicitly for testing
             default_lang: "en".to_string(),
             tool_manifest,
             tool_policies,
