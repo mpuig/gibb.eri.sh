@@ -29,6 +29,14 @@ pub struct SystemContext {
 
     /// Timestamp when this context was captured
     pub timestamp_ms: i64,
+
+    /// Preview of clipboard contents (truncated for prompt injection)
+    #[serde(default)]
+    pub clipboard_preview: Option<String>,
+
+    /// Preview of currently selected text (truncated for prompt injection)
+    #[serde(default)]
+    pub selection_preview: Option<String>,
 }
 
 impl Default for SystemContext {
@@ -38,6 +46,8 @@ impl Default for SystemContext {
             is_mic_active: false,
             meeting_app: None,
             timestamp_ms: chrono::Utc::now().timestamp_millis(),
+            clipboard_preview: None,
+            selection_preview: None,
         }
     }
 }
@@ -116,6 +126,54 @@ impl ContextState {
             system.has_meeting_app(),
         );
         self.system = system;
+    }
+
+    /// Generate a prompt snippet describing the current context.
+    ///
+    /// Used to inject context into FunctionGemma prompts, enabling
+    /// implicit references like "search this error" or "summarize this".
+    pub fn to_prompt_snippet(&self) -> String {
+        let mut lines = Vec::new();
+
+        // Mode
+        lines.push(format!("Mode: {}", self.effective_mode()));
+
+        // Active app
+        if let Some(ref app) = self.system.active_app {
+            let app_name = app.name.as_deref().unwrap_or(&app.bundle_id);
+            lines.push(format!("Active App: {}", app_name));
+        }
+
+        // Meeting status
+        if self.system.has_meeting_app() && self.system.is_mic_active {
+            lines.push("In Meeting: yes".to_string());
+        }
+
+        // Clipboard preview (truncate to ~200 chars for prompt efficiency)
+        if let Some(ref clip) = self.system.clipboard_preview {
+            let preview = if clip.len() > 200 {
+                format!("{}...", &clip[..200])
+            } else {
+                clip.clone()
+            };
+            lines.push(format!("Clipboard: \"{}\"", preview.replace('\n', " ")));
+        }
+
+        // Selection preview
+        if let Some(ref sel) = self.system.selection_preview {
+            let preview = if sel.len() > 200 {
+                format!("{}...", &sel[..200])
+            } else {
+                sel.clone()
+            };
+            lines.push(format!("Selection: \"{}\"", preview.replace('\n', " ")));
+        }
+
+        // Current date/time (useful for scheduling tools)
+        let now = chrono::Utc::now();
+        lines.push(format!("Date: {}", now.format("%Y-%m-%d")));
+
+        lines.join("\n")
     }
 }
 

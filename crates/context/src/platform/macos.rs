@@ -129,6 +129,83 @@ fn get_frontmost_app() -> Option<AppInfo> {
     })
 }
 
+/// Get the current clipboard text contents.
+///
+/// Returns a preview (first ~500 chars) of the clipboard if it contains text.
+/// Returns None if clipboard is empty or contains non-text data.
+pub fn get_clipboard_preview() -> Option<String> {
+    let output = Command::new("pbpaste").output().ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let text = text.trim();
+
+    if text.is_empty() {
+        return None;
+    }
+
+    // Truncate to ~500 chars for efficiency
+    let preview = if text.len() > 500 {
+        format!("{}...", &text[..500])
+    } else {
+        text.to_string()
+    };
+
+    Some(preview)
+}
+
+/// Get the currently selected text using Accessibility API.
+///
+/// Returns the selected text in the frontmost application.
+/// This requires Accessibility permission.
+pub fn get_selection_preview() -> Option<String> {
+    // AppleScript to get selected text via System Events
+    let script = r#"
+        tell application "System Events"
+            set frontApp to first application process whose frontmost is true
+            set appName to name of frontApp
+
+            try
+                tell frontApp
+                    set selectedText to value of attribute "AXSelectedText" of (first UI element whose focused is true)
+                    if selectedText is not missing value and selectedText is not "" then
+                        return selectedText
+                    end if
+                end tell
+            end try
+        end tell
+        return ""
+    "#;
+
+    let output = Command::new("osascript")
+        .args(["-e", script])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let text = text.trim();
+
+    if text.is_empty() {
+        return None;
+    }
+
+    // Truncate to ~300 chars
+    let preview = if text.len() > 300 {
+        format!("{}...", &text[..300])
+    } else {
+        text.to_string()
+    };
+
+    Some(preview)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

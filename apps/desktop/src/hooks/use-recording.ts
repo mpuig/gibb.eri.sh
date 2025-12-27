@@ -9,6 +9,7 @@ import {
   type SearchResultEvent,
   type SearchErrorEvent,
   type NoMatchEvent,
+  type SummaryEvent,
 } from "../stores/action-router-store";
 import { TranscriptSegment } from "./use-stt";
 import { useSessions } from "./use-sessions";
@@ -299,6 +300,17 @@ export function useRecording() {
         }
       );
       if (mounted) unlisteners.push(searchErr);
+
+      // Listen for tool summaries (Phase 3 feedback loop)
+      const summary = await listen<SummaryEvent>(
+        "tools:summary",
+        (event) => {
+          if (!mounted) return;
+          useActionRouterStore.getState().setSummary(event.payload);
+          console.log("[router] summary", event.payload.tool, event.payload.summary);
+        }
+      );
+      if (mounted) unlisteners.push(summary);
     };
 
     setupListeners();

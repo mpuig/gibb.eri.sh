@@ -17,7 +17,7 @@ function previewPayload(payload: unknown): string {
 }
 
 export const ActionRouterPanel = memo(function ActionRouterPanel() {
-  const { events, lastSearchResult, lastSearchError, lastNoMatch, clear } = useActionRouterStore();
+  const { events, lastSearchResult, lastSearchError, lastNoMatch, lastSummary, clear } = useActionRouterStore();
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -96,6 +96,17 @@ export const ActionRouterPanel = memo(function ActionRouterPanel() {
                 "{lastNoMatch.text}"
               </div>
             )}
+          </div>
+        )}
+
+        {lastSummary && (
+          <div
+            className="rounded-lg p-3 mb-3"
+            style={{ background: "rgba(99, 102, 241, 0.10)", border: "1px solid rgba(99, 102, 241, 0.25)" }}
+          >
+            <div className="text-sm" style={{ color: "var(--color-text-primary)" }}>
+              {lastSummary.summary}
+            </div>
           </div>
         )}
 

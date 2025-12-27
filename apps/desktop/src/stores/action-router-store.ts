@@ -30,16 +30,24 @@ export interface NoMatchEvent {
   text: string;
 }
 
+export interface SummaryEvent {
+  tool: string;
+  summary: string;
+  ts_ms: number;
+}
+
 interface ActionRouterState {
   events: RouterStatusEvent[];
   lastSearchResult: SearchResultEvent | null;
   lastSearchError: SearchErrorEvent | null;
   lastNoMatch: NoMatchEvent | null;
+  lastSummary: SummaryEvent | null;
 
   addEvent: (event: RouterStatusEvent) => void;
   setSearchResult: (event: SearchResultEvent) => void;
   setSearchError: (event: SearchErrorEvent) => void;
   setNoMatch: (event: NoMatchEvent) => void;
+  setSummary: (event: SummaryEvent) => void;
   clearNoMatch: () => void;
   clear: () => void;
 }
@@ -51,6 +59,7 @@ export const useActionRouterStore = create<ActionRouterState>((set) => ({
   lastSearchResult: null,
   lastSearchError: null,
   lastNoMatch: null,
+  lastSummary: null,
 
   addEvent: (event) =>
     set((state) => ({
@@ -74,6 +83,12 @@ export const useActionRouterStore = create<ActionRouterState>((set) => ({
       lastNoMatch: event,
     })),
 
+  setSummary: (event) =>
+    set(() => ({
+      lastSummary: event,
+      lastNoMatch: null,
+    })),
+
   clearNoMatch: () =>
     set(() => ({
       lastNoMatch: null,
@@ -85,6 +100,7 @@ export const useActionRouterStore = create<ActionRouterState>((set) => ({
       lastSearchResult: null,
       lastSearchError: null,
       lastNoMatch: null,
+      lastSummary: null,
     })),
 }));
 

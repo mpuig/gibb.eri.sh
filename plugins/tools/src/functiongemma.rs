@@ -542,4 +542,60 @@ Invalid output:\n\
         }
         Err(FunctionGemmaError::InvalidOutput)
     }
+
+    /// Generate a natural language summary of a tool's output.
+    ///
+    /// This is Phase 3 of the feedback loop - after a tool executes,
+    /// we feed its output back to the model to generate a human-friendly summary.
+    pub fn summarize_tool_output(
+        &self,
+        tool_name: &str,
+        tool_output: &serde_json::Value,
+        user_request: &str,
+    ) -> Result<String, FunctionGemmaError> {
+        // Build a prompt that asks the model to summarize the tool output
+        let output_preview = serde_json::to_string_pretty(tool_output)
+            .unwrap_or_else(|_| tool_output.to_string());
+
+        // Truncate output to avoid token limits
+        let output_preview = if output_preview.len() > 800 {
+            format!("{}...", &output_preview[..800])
+        } else {
+            output_preview
+        };
+
+        let prompt = format!(
+            "<start_of_turn>user\n\
+            The user asked: \"{}\"\n\
+            The {} tool returned:\n{}\n\n\
+            Respond with a brief, natural language summary (1-2 sentences) of the result. \
+            Do not mention the tool name. Just describe what you found.\n\
+            <end_of_turn>\n\
+            <start_of_turn>model\n",
+            user_request, tool_name, output_preview
+        );
+
+        let decoded = self.generate_text(&prompt, 100)?;
+
+        // Extract just the summary (before any end-of-turn marker)
+        let summary = decoded
+            .split("<end_of_turn>")
+            .next()
+            .unwrap_or(&decoded)
+            .trim()
+            .to_string();
+
+        // Clean up any remaining markers
+        let summary = summary
+            .replace("<start_of_turn>", "")
+            .replace("model", "")
+            .trim()
+            .to_string();
+
+        if summary.is_empty() {
+            return Err(FunctionGemmaError::InvalidOutput);
+        }
+
+        Ok(summary)
+    }
 }

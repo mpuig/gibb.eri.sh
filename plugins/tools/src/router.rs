@@ -7,6 +7,7 @@ use crate::executor::{execute_tool, ExecutionMode, ExecutionOutcome};
 use crate::policy::DEBOUNCE;
 use crate::registry::ToolRegistry;
 use crate::tool_manifest::ToolPolicy;
+use gibberish_context::platform::{get_clipboard_preview, get_selection_preview};
 use gibberish_context::Mode;
 use gibberish_events::StreamCommitEvent;
 use std::collections::HashMap;
@@ -158,10 +159,28 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             continue;
         };
 
-        emit_router_status(&app, "infer_start", serde_json::json!({}));
+        // Phase 2: Context Injection
+        // Read clipboard/selection just-in-time and build context-enriched prompt
+        let context_snippet = {
+            let mut guard = state.lock().await;
+            // Update context with current clipboard/selection
+            guard.context.system.clipboard_preview = get_clipboard_preview();
+            guard.context.system.selection_preview = get_selection_preview();
+            guard.context.to_prompt_snippet()
+        };
+
+        // Build context-enriched developer prompt
+        let enriched_developer_context = format!(
+            "{}\n\nCurrent Context:\n{}",
+            developer_context, context_snippet
+        );
+
+        emit_router_status(&app, "infer_start", serde_json::json!({
+            "context": context_snippet
+        }));
 
         let pending_text_for_model = pending_text.clone();
-        let developer_context_for_model = developer_context.clone();
+        let developer_context_for_model: Arc<str> = Arc::from(enriched_developer_context);
         let infer_cancel_for_model = infer_cancel.clone();
         let runner_for_args = std::sync::Arc::clone(&runner);
 
@@ -312,18 +331,23 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         )
         .await;
 
-        match outcome {
-            ExecutionOutcome::Executed => {
+        // Phase 3: Feedback Loop - generate summary for executed tools
+        let tool_output = match outcome {
+            ExecutionOutcome::Executed(payload) => {
                 tracing::debug!(tool = %proposal.tool, "Tool executed successfully");
+                Some(payload)
             }
-            ExecutionOutcome::CacheHit => {
+            ExecutionOutcome::CacheHit(payload) => {
                 tracing::debug!(tool = %proposal.tool, "Tool result from cache");
+                Some(payload)
             }
             ExecutionOutcome::Cooldown => {
                 tracing::debug!(tool = %proposal.tool, "Tool skipped due to cooldown");
+                None
             }
             ExecutionOutcome::ProposalEmitted => {
                 tracing::debug!(tool = %proposal.tool, "Tool proposal emitted for approval");
+                None
             }
             ExecutionOutcome::NotFound => {
                 emit_router_status(
@@ -331,9 +355,69 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                     "proposal_unsupported",
                     serde_json::json!({ "tool": proposal.tool }),
                 );
+                None
             }
             ExecutionOutcome::Failed(e) => {
                 tracing::warn!(tool = %proposal.tool, error = %e, "Tool execution failed");
+                None
+            }
+        };
+
+        // Generate natural language summary if we have tool output
+        if let Some(output) = tool_output {
+            let runner_for_summary = {
+                let guard = state.lock().await;
+                guard
+                    .functiongemma
+                    .model
+                    .as_ref()
+                    .map(|m| std::sync::Arc::clone(&m.runner))
+            };
+
+            if let Some(runner) = runner_for_summary {
+                let tool_name = proposal.tool.clone();
+                let user_text = pending_text.clone();
+                let output_clone = output.clone();
+
+                emit_router_status(&app, "summary_start", serde_json::json!({
+                    "tool": tool_name
+                }));
+
+                let summary_result = tokio::task::spawn_blocking(move || {
+                    runner.summarize_tool_output(&tool_name, &output_clone, &user_text)
+                })
+                .await
+                .map_err(|e| e.to_string())
+                .and_then(|r| r.map_err(|e| e.to_string()));
+
+                match summary_result {
+                    Ok(summary) => {
+                        emit_router_status(
+                            &app,
+                            "summary_done",
+                            serde_json::json!({
+                                "tool": proposal.tool,
+                                "summary": summary
+                            }),
+                        );
+                        // Emit a dedicated event for the UI to display/speak
+                        let _ = app.emit(
+                            "tools:summary",
+                            serde_json::json!({
+                                "tool": proposal.tool,
+                                "summary": summary,
+                                "ts_ms": chrono::Utc::now().timestamp_millis()
+                            }),
+                        );
+                    }
+                    Err(e) => {
+                        tracing::debug!(
+                            tool = %proposal.tool,
+                            error = %e,
+                            "Failed to generate summary (non-fatal)"
+                        );
+                    }
+                }
             }
         }
     }

@@ -27,11 +27,13 @@ pub enum ExecutionMode {
 /// Result of tool execution attempt.
 pub enum ExecutionOutcome {
     /// Tool was executed successfully, result emitted.
-    Executed,
+    /// Contains the result payload for feedback loop.
+    Executed(serde_json::Value),
     /// Tool was skipped due to cooldown.
     Cooldown,
     /// Cache hit, result emitted from cache.
-    CacheHit,
+    /// Contains the cached payload for feedback loop.
+    CacheHit(serde_json::Value),
     /// Tool execution requires user approval (not auto-run).
     ProposalEmitted,
     /// Tool not found in registry.
@@ -93,7 +95,7 @@ pub async fn execute_tool<R: Runtime>(
     if let Some((cached_payload, event_name)) = check_result {
         let _ = app.emit(event_name, &cached_payload);
         emit_tool_done(app, tool_name, true);
-        return ExecutionOutcome::CacheHit;
+        return ExecutionOutcome::CacheHit(cached_payload);
     }
 
     // Execute the tool with system environment
@@ -125,7 +127,7 @@ pub async fn execute_tool<R: Runtime>(
             // Emit the result using tool-provided event name and payload
             let _ = app.emit(result.event_name, &result.payload);
             emit_tool_done(app, tool_name, false);
-            ExecutionOutcome::Executed
+            ExecutionOutcome::Executed(result.payload)
         }
         Err(e) => {
             emit_tool_error(app, tool_name, &e.to_string());

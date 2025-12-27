@@ -65,11 +65,15 @@ impl ContextPoller {
 
             while running.load(Ordering::SeqCst) {
                 // Poll current system state
+                // Note: clipboard/selection are populated just-in-time in router,
+                // not on every poll (expensive)
                 let system = SystemContext {
                     active_app: provider.get_active_app(),
                     is_mic_active: provider.is_mic_active(),
                     meeting_app: provider.get_meeting_app(),
                     timestamp_ms: chrono::Utc::now().timestamp_millis(),
+                    clipboard_preview: None,
+                    selection_preview: None,
                 };
 
                 // Update state and check if mode changed
