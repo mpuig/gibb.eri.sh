@@ -135,7 +135,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         }
 
         // Extract state snapshot under lock
-        let (pending_text, runner, enabled, router_settings, developer_context, tool_policies, infer_cancel) = {
+        let (pending_text, runner, enabled, router_settings, infer_cancel) = {
             let mut guard = state.lock().await;
 
             let pending_text = guard.router.pending_text.trim().to_string();
@@ -157,9 +157,24 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                     current_mode: guard.context.effective_mode(),
                     min_confidence: guard.router.min_confidence,
                 },
-                guard.router.functiongemma_developer_context.clone(),
-                guard.router.tool_policies.clone(),
                 guard.router.infer_cancel.clone(),
+            )
+        };
+
+        // Build developer context and tool policies JIT based on current mode
+        // This ensures the model sees the correct tools for the current mode
+        let registry = ToolRegistry::build_all();
+        let (developer_context, tool_policies): (Arc<str>, Arc<HashMap<String, ToolPolicy>>) = {
+            let instructions = registry.functiongemma_instructions_for_mode(router_settings.current_mode);
+            let manifest_json = registry.manifest_json_for_mode(router_settings.current_mode);
+            let compiled = crate::tool_manifest::validate_and_compile(&manifest_json)
+                .unwrap_or_default();
+            (
+                Arc::from(format!(
+                    "You are a model that can do function calling with the following functions\n{}\n{}",
+                    instructions, compiled.function_declarations
+                )),
+                Arc::new(compiled.policies),
             )
         };
 
@@ -296,9 +311,6 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         else {
             continue;
         };
-
-        // Build registry for tool execution
-        let registry = ToolRegistry::from_policies(&tool_policies);
 
         // Guard: skip if tool not available in current mode
         if let Some(tool) = registry.get(&proposal.tool) {
