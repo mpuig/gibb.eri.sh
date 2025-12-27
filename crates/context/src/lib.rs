@@ -43,6 +43,7 @@
 //! }));
 //! ```
 
+pub mod limits;
 mod mode;
 mod poller;
 mod provider;
