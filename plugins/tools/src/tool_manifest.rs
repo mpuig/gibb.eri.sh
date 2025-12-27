@@ -1,3 +1,4 @@
+use crate::tools::ToolDefinition;
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -144,6 +145,41 @@ pub fn validate_and_compile(manifest_json: &str) -> Result<CompiledManifest, Str
         policies,
         function_declarations,
     })
+}
+
+/// Generate FunctionGemma declarations from tool definitions.
+///
+/// This is the JIT (just-in-time) manifest generation that builds
+/// declarations dynamically from the registry's tool definitions.
+pub fn generate_declarations(tools: &[ToolDefinition]) -> String {
+    let mut declarations = String::new();
+    for tool in tools {
+        match functiongemma_declaration(&tool.name, &tool.description, &tool.args_schema) {
+            Ok(decl) => declarations.push_str(&decl),
+            Err(e) => {
+                tracing::warn!(tool = %tool.name, error = %e, "Failed to generate declaration");
+            }
+        }
+    }
+    declarations
+}
+
+/// Build ToolPolicy from a ToolDefinition.
+pub fn policy_from_definition(tool: &ToolDefinition) -> ToolPolicy {
+    let schema_info = extract_schema_info(&tool.args_schema, 0).unwrap_or_else(|_| SchemaInfo {
+        default_lang: None,
+        default_sentences: None,
+        required_args: Vec::new(),
+        arg_types: HashMap::new(),
+    });
+
+    ToolPolicy {
+        read_only: tool.read_only,
+        default_lang: schema_info.default_lang,
+        default_sentences: schema_info.default_sentences,
+        required_args: schema_info.required_args,
+        arg_types: schema_info.arg_types,
+    }
 }
 
 fn parse_json_arg_type(s: &str) -> Option<JsonArgType> {
@@ -456,5 +492,65 @@ mod tests {
         }"#;
         let err = validate_and_compile(json).unwrap_err();
         assert!(err.contains("sentences.default"));
+    }
+
+    #[test]
+    fn generate_declarations_from_tool_definitions() {
+        let tools = vec![
+            ToolDefinition {
+                name: "web_search".to_string(),
+                description: "Search the web".to_string(),
+                read_only: true,
+                args_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "Search query" }
+                    },
+                    "required": ["query"]
+                }),
+            },
+            ToolDefinition {
+                name: "app_launcher".to_string(),
+                description: "Launch applications".to_string(),
+                read_only: true,
+                args_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "app": { "type": "string" }
+                    },
+                    "required": ["app"]
+                }),
+            },
+        ];
+
+        let declarations = generate_declarations(&tools);
+        assert!(declarations.contains("declaration:web_search{"));
+        assert!(declarations.contains("declaration:app_launcher{"));
+        assert!(declarations.contains("Search the web"));
+        assert!(declarations.contains("<start_function_declaration>"));
+        assert!(declarations.contains("<end_function_declaration>"));
+    }
+
+    #[test]
+    fn policy_from_definition_extracts_metadata() {
+        let tool = ToolDefinition {
+            name: "test_tool".to_string(),
+            description: "Test".to_string(),
+            read_only: false,
+            args_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string" },
+                    "count": { "type": "integer" }
+                },
+                "required": ["query"]
+            }),
+        };
+
+        let policy = policy_from_definition(&tool);
+        assert!(!policy.read_only);
+        assert_eq!(policy.required_args, vec!["query".to_string()]);
+        assert_eq!(policy.arg_types.get("query").copied(), Some(JsonArgType::String));
+        assert_eq!(policy.arg_types.get("count").copied(), Some(JsonArgType::Integer));
     }
 }
