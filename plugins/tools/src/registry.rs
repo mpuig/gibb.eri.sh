@@ -177,26 +177,23 @@ impl ToolRegistry {
     }
 
     /// Build FunctionGemma function declarations for the given mode.
+    ///
+    /// Outputs declarations in the official FunctionGemma format:
+    /// <start_function_declaration>{"name": "...", "description": "...", "parameters": {...}}<end_function_declaration>
     pub fn functiongemma_declarations_for_mode(&self, mode: Mode) -> String {
         let definitions = self.definitions_for_mode(mode);
         let declarations: Vec<String> = definitions
             .iter()
             .map(|def| {
-                let args_desc = if let Some(props) = def.args_schema.get("properties") {
-                    if let Some(obj) = props.as_object() {
-                        let arg_names: Vec<&str> = obj.keys().map(|s| s.as_str()).collect();
-                        if arg_names.is_empty() {
-                            "no args".to_string()
-                        } else {
-                            format!("args: {}", arg_names.join(", "))
-                        }
-                    } else {
-                        "no args".to_string()
-                    }
-                } else {
-                    "no args".to_string()
-                };
-                format!("- {}: {} ({})", def.name, def.description, args_desc)
+                let decl = serde_json::json!({
+                    "name": def.name,
+                    "description": def.description,
+                    "parameters": def.args_schema
+                });
+                format!(
+                    "<start_function_declaration>{}<end_function_declaration>",
+                    serde_json::to_string(&decl).unwrap_or_else(|_| "{}".to_string())
+                )
             })
             .collect();
         declarations.join("\n")
