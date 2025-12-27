@@ -20,7 +20,7 @@ impl Tool for WebSearchTool {
     }
 
     fn description(&self) -> Cow<'static, str> {
-        Cow::Borrowed("Search the web for information on any topic")
+        Cow::Borrowed("Search for information about a topic, look up facts, or answer questions")
     }
 
     fn example_phrases(&self) -> &'static [&'static str] {
@@ -34,8 +34,10 @@ impl Tool for WebSearchTool {
 
     fn few_shot_examples(&self) -> &'static [&'static str] {
         &[
+            "User: search for quantum physics\n<start_function_call>call:web_search{query:<escape>quantum physics<escape>}<end_function_call>",
             "User: what is quantum computing\n<start_function_call>call:web_search{query:<escape>quantum computing<escape>}<end_function_call>",
             "User: tell me about Barcelona\n<start_function_call>call:web_search{query:<escape>Barcelona<escape>}<end_function_call>",
+            "User: look up machine learning\n<start_function_call>call:web_search{query:<escape>machine learning<escape>}<end_function_call>",
         ]
     }
 
