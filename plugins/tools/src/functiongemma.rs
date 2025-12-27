@@ -116,6 +116,8 @@ fn build_empty_past_spec(value_type: &ValueType) -> Option<EmptyPastSpec> {
     Some(EmptyPastSpec { elem, shape: dims })
 }
 
+use crate::prompt_builder;
+
 impl FunctionGemmaRunner {
     pub fn load(
         model_path: impl AsRef<Path>,
@@ -213,54 +215,6 @@ impl FunctionGemmaRunner {
             empty_past_specs,
             banned_token_ids,
         })
-    }
-
-    fn build_prompt(developer_context: &str, committed_text: &str) -> String {
-        // Follow the official FunctionGemma formatting:
-        // - a developer turn that contains the trigger phrase + function declarations (+ optional policy text)
-        // - a user turn with the request
-        // - the model emits `<start_function_call>call:...{...}<end_function_call>` when appropriate
-        format!(
-            "<start_of_turn>developer\n\
-{developer_context}<end_of_turn>\n\
-<start_of_turn>user\n\
-{committed_text}<end_of_turn>\n\
-<start_of_turn>model\n"
-        )
-    }
-
-    fn build_args_prompt(developer_context: &str, tool: &str, committed_text: &str) -> String {
-        format!(
-            "<start_of_turn>developer\n\
-{developer_context}<end_of_turn>\n\
-<start_of_turn>user\n\
-Call the function {tool} with the correct arguments for this text:\n\
-{committed_text}<end_of_turn>\n\
-<start_of_turn>model\n"
-        )
-    }
-
-    fn build_repair_prompt(
-        developer_context: &str,
-        committed_text: &str,
-        bad_output: &str,
-    ) -> String {
-        format!(
-            "<start_of_turn>developer\n\
-{developer_context}<end_of_turn>\n\
-<start_of_turn>user\n\
-The previous model output was invalid.\n\
-\n\
-Output ONLY valid function call(s) using EXACTLY this format:\n\
-<start_function_call>call:TOOL_NAME{{arg1:<escape>value<escape>,arg2:...}}<end_function_call>\n\
-\n\
-Text:\n\
-{committed_text}\n\
-\n\
-Invalid output:\n\
-{bad_output}<end_of_turn>\n\
-<start_of_turn>model\n"
-        )
     }
 
     fn parse_output(raw_text: String, evidence: &str) -> ModelOutput {
@@ -512,7 +466,7 @@ Invalid output:\n\
         committed_text: &str,
     ) -> Result<ModelOutput, FunctionGemmaError> {
         const MAX_NEW_TOKENS: usize = 160;
-        let prompt = Self::build_prompt(developer_context, committed_text);
+        let prompt = prompt_builder::build_prompt(developer_context, committed_text);
         let decoded = self.generate_text(&prompt, MAX_NEW_TOKENS)?;
 
         let out = Self::parse_output(decoded.clone(), committed_text);
@@ -521,7 +475,8 @@ Invalid output:\n\
         }
 
         // Retry once with a stricter repair prompt (still FunctionGemma-native).
-        let repair_prompt = Self::build_repair_prompt(developer_context, committed_text, &decoded);
+        let repair_prompt =
+            prompt_builder::build_repair_prompt(developer_context, committed_text, &decoded);
         let repaired = self.generate_text(&repair_prompt, 200)?;
         let mut repaired_out = Self::parse_output(repaired.clone(), committed_text);
         if repaired_out.proposals.is_empty() {
@@ -540,7 +495,7 @@ Invalid output:\n\
         tool: &str,
         committed_text: &str,
     ) -> Result<serde_json::Value, FunctionGemmaError> {
-        let prompt = Self::build_args_prompt(developer_context, tool, committed_text);
+        let prompt = prompt_builder::build_args_prompt(developer_context, tool, committed_text);
         let decoded = self.generate_text(&prompt, 96)?;
         if let Some(call) = crate::parser::extract_function_call_json_tagged(&decoded) {
             let (_, args) = crate::parser::parse_functiongemma_call(call)?;
@@ -559,27 +514,11 @@ Invalid output:\n\
         tool_output: &serde_json::Value,
         user_request: &str,
     ) -> Result<String, FunctionGemmaError> {
-        // Build a prompt that asks the model to summarize the tool output
-        let output_preview =
+        let output_json =
             serde_json::to_string_pretty(tool_output).unwrap_or_else(|_| tool_output.to_string());
-
-        // Truncate output to avoid token limits
-        let output_preview = if output_preview.len() > 800 {
-            format!("{}...", &output_preview[..800])
-        } else {
-            output_preview
-        };
-
-        let prompt = format!(
-            "<start_of_turn>user\n\
-            The user asked: \"{}\"\n\
-            The {} tool returned:\n{}\n\n\
-            Respond with a brief, natural language summary (1-2 sentences) of the result. \
-            Do not mention the tool name. Just describe what you found.\n\
-            <end_of_turn>\n\
-            <start_of_turn>model\n",
-            user_request, tool_name, output_preview
-        );
+        let output_preview = prompt_builder::truncate_preview(&output_json, 800);
+        let prompt =
+            prompt_builder::build_summary_prompt(tool_name, &output_preview, user_request);
 
         let decoded = self.generate_text(&prompt, 100)?;
 

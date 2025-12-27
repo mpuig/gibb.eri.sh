@@ -16,6 +16,7 @@ mod functiongemma_download;
 mod functiongemma_models;
 mod parser;
 mod policy;
+mod prompt_builder;
 mod registry;
 mod router;
 mod router_logic;
