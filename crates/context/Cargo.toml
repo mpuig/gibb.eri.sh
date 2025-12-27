@@ -12,9 +12,7 @@ chrono.workspace = true
 gibberish-detect = { path = "../detect" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-# For active window detection via Accessibility APIs
-core-foundation.workspace = true
-core-graphics.workspace = true
+# For active window detection via NSWorkspace
 objc.workspace = true
 
 [dev-dependencies]

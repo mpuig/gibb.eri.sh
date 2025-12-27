@@ -4,10 +4,14 @@ use crate::provider::{ActiveAppProvider, MicActivityProvider, SystemStateProvide
 use crate::state::AppInfo;
 use std::process::Command;
 
-/// macOS implementation using AppleScript for active window detection.
+// Native Cocoa imports for efficient frontmost app detection
+use objc::runtime::{Class, Object};
+use objc::{msg_send, sel, sel_impl};
+
+/// macOS implementation using native Cocoa APIs for active window detection.
 ///
-/// For POC simplicity, we use osascript. Production could use
-/// native Accessibility APIs via objc crate for lower latency.
+/// Uses NSWorkspace.frontmostApplication for efficient frontmost app queries
+/// without subprocess overhead.
 #[derive(Debug, Default)]
 pub struct MacOSProvider {
     /// Cached mic state from detect crate
@@ -69,59 +73,57 @@ impl SystemStateProvider for MacOSProvider {
     }
 }
 
-/// Get the frontmost application using AppleScript.
+/// Get the frontmost application using native Cocoa APIs.
 ///
 /// Returns bundle ID and name of the currently focused app.
+/// Uses NSWorkspace.sharedWorkspace.frontmostApplication for efficiency.
 fn get_frontmost_app() -> Option<AppInfo> {
-    // AppleScript to get frontmost app's bundle ID and name
-    let script = r#"
-        tell application "System Events"
-            set frontApp to first application process whose frontmost is true
-            set appName to name of frontApp
-            set bundleId to bundle identifier of frontApp
-            return bundleId & "|" & appName
-        end tell
-    "#;
+    unsafe {
+        // Get NSWorkspace class
+        let workspace_class = Class::get("NSWorkspace")?;
 
-    let output = Command::new("osascript")
-        .args(["-e", script])
-        .output()
-        .ok()?;
+        // Get shared workspace: [NSWorkspace sharedWorkspace]
+        let shared_workspace: *mut Object = msg_send![workspace_class, sharedWorkspace];
+        if shared_workspace.is_null() {
+            return None;
+        }
 
-    if !output.status.success() {
-        tracing::debug!(
-            "osascript failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        // Get frontmost application: [workspace frontmostApplication]
+        let frontmost_app: *mut Object = msg_send![shared_workspace, frontmostApplication];
+        if frontmost_app.is_null() {
+            return None;
+        }
+
+        // Get bundle identifier: [app bundleIdentifier]
+        let bundle_id_ns: *mut Object = msg_send![frontmost_app, bundleIdentifier];
+        let bundle_id = nsstring_to_string(bundle_id_ns)?;
+
+        if bundle_id.is_empty() {
+            return None;
+        }
+
+        // Get localized name: [app localizedName]
+        let name_ns: *mut Object = msg_send![frontmost_app, localizedName];
+        let name = nsstring_to_string(name_ns);
+
+        Some(AppInfo { bundle_id, name })
+    }
+}
+
+/// Convert NSString to Rust String.
+unsafe fn nsstring_to_string(nsstring: *mut Object) -> Option<String> {
+    if nsstring.is_null() {
         return None;
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let result = stdout.trim();
-
-    // Parse "bundleId|appName" format
-    let parts: Vec<&str> = result.splitn(2, '|').collect();
-    if parts.len() != 2 {
-        tracing::debug!("unexpected osascript output: {}", result);
+    // Get UTF8 C string: [nsstring UTF8String]
+    let c_str: *const std::os::raw::c_char = msg_send![nsstring, UTF8String];
+    if c_str.is_null() {
         return None;
     }
 
-    let bundle_id = parts[0].trim().to_string();
-    let name = parts[1].trim().to_string();
-
-    // Filter out empty or "missing value" results
-    if bundle_id.is_empty() || bundle_id == "missing value" {
-        return None;
-    }
-
-    Some(AppInfo {
-        bundle_id,
-        name: if name.is_empty() || name == "missing value" {
-            None
-        } else {
-            Some(name)
-        },
-    })
+    let rust_str = std::ffi::CStr::from_ptr(c_str).to_str().ok()?;
+    Some(rust_str.to_string())
 }
 
 /// Get the current clipboard text contents.
