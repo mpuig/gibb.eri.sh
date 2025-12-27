@@ -100,6 +100,66 @@ function formatDuration(ms: number): string {
   return `${minutes}:${secs.toString().padStart(2, "0")}`;
 }
 
+function renderToolResult(activity: Activity, isExpanded: boolean): ReactNode {
+  const result = activity.content.result;
+  const tool = activity.content.tool;
+
+  // Handle search results (web_search tool)
+  if (tool === "web_search" && result?.result) {
+    const { title, summary, url, thumbnail_url } = result.result;
+    return (
+      <div className="space-y-2">
+        <div className="flex items-start gap-3">
+          {thumbnail_url && (
+            <img
+              src={thumbnail_url}
+              alt=""
+              className="w-12 h-12 rounded object-cover flex-shrink-0"
+            />
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+              {title}
+            </p>
+            <p className="text-xs mt-1" style={{ color: "var(--color-text-secondary)" }}>
+              {summary}
+            </p>
+            {url && (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs mt-1 inline-block hover:underline"
+                style={{ color: "var(--color-accent)" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                Read more →
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Default: show tool name with expandable JSON
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>
+          {tool}
+        </span>
+        {STATUS_INDICATOR[activity.status]}
+      </div>
+      {isExpanded && result && (
+        <pre className="mt-2 p-2 text-xs rounded overflow-auto max-h-32" style={{ background: "var(--color-bg-tertiary)" }}>
+          {JSON.stringify(result, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 export function ActivityItem({ activity, children }: ActivityItemProps) {
   const toggleExpanded = useActivityStore((s) => s.toggleExpanded);
   const config = TYPE_CONFIG[activity.type];
@@ -127,21 +187,7 @@ export function ActivityItem({ activity, children }: ActivityItemProps) {
         );
 
       case "tool_result":
-        return (
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>
-                {activity.content.tool}
-              </span>
-              {STATUS_INDICATOR[activity.status]}
-            </div>
-            {isExpanded && activity.content.result && (
-              <pre className="mt-2 p-2 text-xs rounded overflow-auto max-h-32" style={{ background: "var(--color-bg-tertiary)" }}>
-                {JSON.stringify(activity.content.result, null, 2)}
-              </pre>
-            )}
-          </div>
-        );
+        return renderToolResult(activity, isExpanded);
 
       case "tool_error":
         return (
@@ -180,8 +226,11 @@ export function ActivityItem({ activity, children }: ActivityItemProps) {
     }
   };
 
+  // web_search shows content directly, other tool_results are expandable
   const hasExpandableContent =
-    activity.type === "tool_result" && activity.content.result;
+    activity.type === "tool_result" &&
+    activity.content.result &&
+    activity.content.tool !== "web_search";
 
   return (
     <div
