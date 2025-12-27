@@ -231,3 +231,13 @@ We are exploring an **"Always-On but NOT recording"** mode.
 -   **The Concept:** The app listens continuously and keeps the last 60 seconds of audio in a circular RAM-only buffer.
 -   **The Trigger:** If you realize you're in an important conversation, you hit "Record" and Gibberish "catches up" by transcribing the last minute from memory.
 -   **The Privacy:** If you don't hit record, the audio is overwritten in RAM and never touches the disk. Pure ephemeral intelligence.
+
+### 11.3. Input Emulation (The Virtual Hands)
+We want to control apps that don't have APIs.
+-   **The Tech:** `enigo` crate for cross-platform input simulation.
+-   **The Use Case:** "Mute this tab" (Simulate `Cmd+W` or click). "Type this paragraph" (Simulate keystrokes).
+
+### 11.4. Persistent Memory (The Hippocampus)
+Currently, the assistant has amnesia between sessions. We plan to add Long-Term Memory via `crates/storage`.
+-   **Explicit:** "Remember that my project ID is 1234."
+-   **Implicit:** Vector search over past transcripts to answer "What did we discuss about the API last week?"
