@@ -69,22 +69,78 @@ let result = llm.infer(prompt, user_text);
 2.  **Performance:** Less text in the system prompt = faster inference.
 3.  **Safety:** Destructive tools (like `git reset`) are only exposed when you are explicitly focusing on your code editor.
 
-## Implicit Referencing ("The Magic Word: This")
+## Context Injection
 
-Because gibb.eri.sh knows your context, you can use **Deictic references**.
+The LLM doesn't just see your command—it sees your **environment**. Before every inference, we inject a context snapshot:
+
+```
+Current Context:
+Mode: Dev
+Active App: VS Code
+Clipboard: "RuntimeError: Connection refused at port 8080"
+Date: 2025-12-27
+```
+
+This enables **implicit referencing**:
+
+| You say | LLM infers |
+|---------|-----------|
+| "Search this error" | `web_search{query: "RuntimeError: Connection refused"}` |
+| "Open that app" | Resolves from active window context |
+| "What does this mean?" | Uses clipboard or selection |
+
+### What Gets Injected
+
+- **Mode**: Current mode (Global, Dev, Meeting)
+- **Active App**: Name of the focused application
+- **Clipboard**: First ~200 chars of clipboard text
+- **Selection**: Currently selected text (via Accessibility API)
+- **Date**: Current date (for scheduling-aware commands)
+
+### The Magic Word: "This"
+
+Because gibb.eri.sh knows your context, you can use **deictic references**:
 
 - **User says:** "Summarize *this*."
-- **LLM sees:** `{"tool": "summarize", "source": "active_selection"}`
 - **Context Engine:**
     1. Checks active app (e.g., Chrome).
     2. Grabs currently selected text (via Accessibility API).
-    3. Feeds text to the tool.
+    3. The LLM sees this in the context and fills the argument automatically.
 
 We also support **"what I just said"**:
 - **User says:** "Create a todo from *what I just said*."
 - **System:** Grabs the last 30 seconds of transcript history.
 
 This allows generic commands to work across any application without specific integrations.
+
+## Feedback Loop
+
+Tools don't just execute—they **respond**. After a tool runs, the result is fed back to the LLM for summarization.
+
+### The Flow
+
+```
+User: "What is quantum computing?"
+      │
+      ▼
+[FunctionGemma] → web_search{query: "quantum computing"}
+      │
+      ▼
+[Wikipedia API] → {title: "Quantum computing", summary: "...uses qubits..."}
+      │
+      ▼
+[FunctionGemma] → "Quantum computing uses qubits instead of classical bits,
+                   enabling exponential speedups for certain problems."
+      │
+      ▼
+[UI] → Displays summary (or speaks via TTS)
+```
+
+### Why This Matters
+
+1. **Accessibility**: You don't have to read raw JSON or API responses.
+2. **Natural Language**: Results are summarized conversationally.
+3. **Composability**: The model can chain thoughts based on results.
 
 ## Available Tools
 
