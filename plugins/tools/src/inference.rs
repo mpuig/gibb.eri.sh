@@ -4,7 +4,6 @@
 //! with proper event emission.
 
 use crate::functiongemma::{FunctionGemmaError, FunctionGemmaRunner, ModelOutput};
-use gibberish_events::EventBus;
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
@@ -114,14 +113,4 @@ pub async fn validate_and_repair_args(
     .and_then(|r| r.map_err(|e| e.to_string()))
 }
 
-/// Helper to emit inference status events.
-pub fn emit_inference_status(event_bus: &dyn EventBus, phase: &str, payload: serde_json::Value) {
-    event_bus.emit(
-        gibberish_events::event_names::ROUTER_STATUS,
-        serde_json::json!({
-            "phase": phase,
-            "ts_ms": chrono::Utc::now().timestamp_millis(),
-            "payload": payload,
-        }),
-    );
-}
+

@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 gibberish-stt.workspace = true
-gibberish-parakeet.workspace = true
 gibberish-vad.workspace = true
 gibberish-turn.workspace = true
 thiserror.workspace = true

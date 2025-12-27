@@ -20,19 +20,7 @@ pub struct LoadResult {
     /// Successfully loaded skills.
     pub skills: Vec<LoadedSkill>,
     /// Errors encountered during loading.
-    pub errors: Vec<(PathBuf, SkillError)>,
-}
-
-impl LoadResult {
-    /// Get all tools from loaded skills.
-    pub fn all_tools(&self) -> Vec<&GenericSkillTool> {
-        self.skills.iter().flat_map(|s| s.tools.iter()).collect()
-    }
-
-    /// Get tool count.
-    pub fn tool_count(&self) -> usize {
-        self.skills.iter().map(|s| s.tools.len()).sum()
-    }
+    pub errors: Vec<SkillError>,
 }
 
 /// Load skills from the application's skills directory.
@@ -124,7 +112,7 @@ pub fn load_skills_from_directory(dir: &Path) -> LoadResult {
             }
             Err(e) => {
                 warn!(path = %skill_file.display(), error = %e, "Failed to load skill");
-                errors.push((skill_file, e));
+                errors.push(e);
             }
         }
     }
@@ -282,7 +270,7 @@ impl std::fmt::Debug for SkillManager {
 pub struct ReloadResult {
     pub skill_count: usize,
     pub tool_count: usize,
-    pub errors: Vec<(PathBuf, SkillError)>,
+    pub errors: Vec<SkillError>,
 }
 
 // GenericSkillTool needs Clone for the manager

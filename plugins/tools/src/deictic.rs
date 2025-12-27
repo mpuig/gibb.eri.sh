@@ -178,20 +178,6 @@ mod tests {
         }
     }
 
-    struct MockSelection(Option<String>);
-    impl SelectionProvider for MockSelection {
-        fn get_selected_text(&self) -> Option<String> {
-            self.0.clone()
-        }
-    }
-
-    struct MockTranscript(String);
-    impl TranscriptProvider for MockTranscript {
-        fn get_last(&self, _seconds: u32) -> Option<String> {
-            Some(self.0.clone())
-        }
-    }
-
     #[test]
     fn test_resolve_clipboard() {
         let clipboard = MockClipboard("hello from clipboard".to_string());

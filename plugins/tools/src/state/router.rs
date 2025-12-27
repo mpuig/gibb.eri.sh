@@ -6,7 +6,7 @@ use std::time::Instant;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
-use crate::policy::MIN_CONFIDENCE;
+use crate::policy::{CLARIFICATION_THRESHOLD, MIN_CONFIDENCE};
 use crate::registry::ToolRegistry;
 use crate::skill_loader::SkillManager;
 use crate::tool_manifest;
@@ -26,6 +26,8 @@ pub struct RouterState {
     pub functiongemma_declarations: Arc<str>,
     pub functiongemma_developer_context: Arc<str>,
     pub min_confidence: f32,
+    /// Confidence threshold below which clarification is requested.
+    pub clarification_threshold: f32,
     /// Generic cooldown tracking: maps cooldown_key -> last execution time.
     pub cooldowns: HashMap<String, Instant>,
     pub pending_text: String,
@@ -83,6 +85,7 @@ impl RouterState {
             functiongemma_declarations,
             functiongemma_developer_context,
             min_confidence: MIN_CONFIDENCE,
+            clarification_threshold: CLARIFICATION_THRESHOLD,
             cooldowns: HashMap::new(),
             pending_text: String::new(),
             inflight: false,
@@ -126,7 +129,8 @@ impl RouterState {
         let declarations = self.functiongemma_declarations.clone();
         self.functiongemma_developer_context = Arc::from(format!(
             "You are a model that can do function calling with the following functions\n{}\n{}",
-            instructions, declarations
+            instructions,
+            declarations
         ));
 
         tracing::debug!(
@@ -154,7 +158,8 @@ impl Default for RouterState {
         let functiongemma_declarations: Arc<str> = Arc::from(compiled.function_declarations);
         let functiongemma_developer_context: Arc<str> = Arc::from(format!(
             "You are a model that can do function calling with the following functions\n{}\n{}",
-            functiongemma_instructions, functiongemma_declarations
+            functiongemma_instructions,
+            functiongemma_declarations
         ));
 
         Self {
@@ -168,6 +173,7 @@ impl Default for RouterState {
             functiongemma_declarations,
             functiongemma_developer_context,
             min_confidence: MIN_CONFIDENCE,
+            clarification_threshold: CLARIFICATION_THRESHOLD,
             cooldowns: HashMap::new(),
             pending_text: String::new(),
             inflight: false,

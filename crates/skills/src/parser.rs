@@ -217,18 +217,58 @@ fn extract_command(content: &str, tool: &str) -> SkillResult<CommandTemplate> {
         .captures(content)
         .and_then(|c| c.get(1))
         .map(|m| m.as_str().trim())
-        .ok_or_else(|| SkillError::InvalidTool {
-            path: std::path::PathBuf::new(),
+        .ok_or_else(|| SkillError::InvalidCommand {
             tool: tool.to_string(),
-            message: "No command block found".to_string(),
+            message: "No ```bash or ```sh code block found".to_string(),
         })?;
 
     parse_command_template(command_str, tool)
 }
 
+/// Tokenize a command string, respecting quoted strings.
+/// Handles single quotes, double quotes, and escaped characters.
+fn tokenize_command(command: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut chars = command.chars().peekable();
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' if !in_single_quote => {
+                // Escape next character
+                if let Some(next) = chars.next() {
+                    current.push(next);
+                }
+            }
+            '\'' if !in_double_quote => {
+                in_single_quote = !in_single_quote;
+            }
+            '"' if !in_single_quote => {
+                in_double_quote = !in_double_quote;
+            }
+            ' ' | '\t' if !in_single_quote && !in_double_quote => {
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+            }
+            _ => {
+                current.push(c);
+            }
+        }
+    }
+
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+
+    tokens
+}
+
 /// Parse a command string into program + args with interpolation.
 fn parse_command_template(command: &str, tool: &str) -> SkillResult<CommandTemplate> {
-    let parts: Vec<&str> = command.split_whitespace().collect();
+    let parts = tokenize_command(command);
 
     if parts.is_empty() {
         return Err(SkillError::InvalidCommand {
@@ -257,7 +297,7 @@ fn parse_command_template(command: &str, tool: &str) -> SkillResult<CommandTempl
 
             // Check if part has literal prefix/suffix
             let full_match = cap.get(0).map(|m| m.as_str()).unwrap_or("");
-            if *part != full_match {
+            if part != full_match {
                 // Has literal parts, e.g., "--count={{count}}"
                 let prefix = part.split("{{").next().unwrap_or("");
                 if !prefix.is_empty() {
@@ -394,5 +434,52 @@ Just some text, no tools.
         let result = parse_skill_content(content, Path::new("test.md"));
 
         assert!(matches!(result, Err(SkillError::NoTools { .. })));
+    }
+
+    #[test]
+    fn test_tokenize_simple() {
+        let tokens = tokenize_command("echo hello world");
+        assert_eq!(tokens, vec!["echo", "hello", "world"]);
+    }
+
+    #[test]
+    fn test_tokenize_double_quotes() {
+        let tokens = tokenize_command(r#"echo "hello world" foo"#);
+        assert_eq!(tokens, vec!["echo", "hello world", "foo"]);
+    }
+
+    #[test]
+    fn test_tokenize_single_quotes() {
+        let tokens = tokenize_command("echo 'hello world' foo");
+        assert_eq!(tokens, vec!["echo", "hello world", "foo"]);
+    }
+
+    #[test]
+    fn test_tokenize_escaped_space() {
+        let tokens = tokenize_command(r"echo hello\ world foo");
+        assert_eq!(tokens, vec!["echo", "hello world", "foo"]);
+    }
+
+    #[test]
+    fn test_tokenize_mixed_quotes() {
+        let tokens = tokenize_command(r#"cmd "arg with 'nested'" 'and "this"'"#);
+        assert_eq!(tokens, vec!["cmd", "arg with 'nested'", r#"and "this""#]);
+    }
+
+    #[test]
+    fn test_tokenize_with_variable() {
+        let tokens = tokenize_command(r#"echo "{{message}}" --flag"#);
+        assert_eq!(tokens, vec!["echo", "{{message}}", "--flag"]);
+    }
+
+    #[test]
+    fn test_parse_command_with_quoted_arg() {
+        let cmd = parse_command_template(r#"echo "hello world" {{name}}"#, "test").unwrap();
+        assert_eq!(cmd.program, "echo");
+        assert_eq!(cmd.args.len(), 2);
+        match &cmd.args[0] {
+            ArgFragment::Literal(s) => assert_eq!(s, "hello world"),
+            _ => panic!("Expected literal"),
+        }
     }
 }

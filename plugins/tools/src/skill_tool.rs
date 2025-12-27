@@ -25,9 +25,20 @@ fn convert_mode(mode: gibberish_skills::Mode) -> Mode {
 
 /// Generic tool that wraps a skill-defined tool.
 ///
-/// Uses `Box::leak` to create static strings required by the Tool trait.
-/// This is acceptable because skills are long-lived and reloading
-/// creates new GenericSkillTool instances.
+/// # Memory Leak Warning
+///
+/// Uses `Box::leak` to create `&'static str` required by the `Tool` trait.
+/// This causes memory to accumulate on skill reload because leaked strings
+/// are never deallocated. The proper fix requires changing the `Tool` trait
+/// to use `String` or `Cow<'static, str>` instead of `&'static str`.
+///
+/// For now, this is acceptable because:
+/// - Skills are typically loaded once at startup
+/// - Reloads are infrequent (development/debugging only)
+/// - The leaked memory per reload is small (tool names + descriptions)
+///
+/// TODO: Refactor Tool trait to avoid `&'static str` requirement.
+/// See issue notary-ded for tracking.
 pub struct GenericSkillTool {
     /// Leaked static tool name.
     pub(crate) name: &'static str,

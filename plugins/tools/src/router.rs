@@ -116,8 +116,12 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         )
     };
 
-    // Build registry once - tools don't change at runtime, only mode filtering does
-    let registry = ToolRegistry::build_all();
+    // Build registry once per queue processing cycle.
+    // Must include skills from state so skill tools are available for execution.
+    let registry = {
+        let guard = state.lock().await;
+        ToolRegistry::build_with_skills(&guard.skills)
+    };
 
     loop {
         // Wait for debounce timeout OR new text notification
@@ -158,6 +162,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                     auto_run_all: guard.router.auto_run_all,
                     current_mode: guard.context.effective_mode(),
                     min_confidence: guard.router.min_confidence,
+                    clarification_threshold: guard.router.clarification_threshold,
                 },
                 guard.router.infer_cancel.clone(),
             )
@@ -267,7 +272,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         };
 
         // Check if proposal needs clarification (low confidence)
-        if router_logic::needs_clarification(proposal) {
+        if router_logic::needs_clarification(proposal, &router_settings) {
             let suggestions = router_logic::clarification_suggestions(proposal, &pending_text);
             emit_router_status(
                 &*event_bus,

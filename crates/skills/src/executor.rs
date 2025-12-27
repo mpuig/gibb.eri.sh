@@ -225,18 +225,47 @@ pub async fn execute_command(
 
     // Capture output with timeout
     let timeout_duration = Duration::from_secs(config.timeout_secs as u64);
+    let max_size = config.head_size + config.tail_size;
 
     let result = timeout(timeout_duration, async {
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
 
-        let mut output = String::new();
-        let max_size = config.head_size + config.tail_size;
+        // Read stdout and stderr concurrently to avoid deadlock.
+        // If we read them sequentially, the child process can block writing to stderr
+        // while we're still reading stdout (if stderr's pipe buffer fills up).
+        let stdout_task = async {
+            let mut lines = Vec::new();
+            if let Some(stdout) = stdout {
+                let mut reader = BufReader::new(stdout).lines();
+                while let Ok(Some(line)) = reader.next_line().await {
+                    lines.push(line);
+                }
+            }
+            lines
+        };
 
-        // Read stdout
-        if let Some(stdout) = stdout {
-            let mut reader = BufReader::new(stdout).lines();
-            while let Ok(Some(line)) = reader.next_line().await {
+        let stderr_task = async {
+            let mut lines = Vec::new();
+            if let Some(stderr) = stderr {
+                let mut reader = BufReader::new(stderr).lines();
+                while let Ok(Some(line)) = reader.next_line().await {
+                    lines.push(line);
+                }
+            }
+            lines
+        };
+
+        let (stdout_lines, stderr_lines) = tokio::join!(stdout_task, stderr_task);
+
+        // Merge output, interleaving stdout and stderr to preserve ordering
+        let mut output = String::new();
+        let mut stdout_iter = stdout_lines.into_iter().peekable();
+        let mut stderr_iter = stderr_lines.into_iter().peekable();
+
+        // Alternate between stdout and stderr to approximate interleaving
+        while stdout_iter.peek().is_some() || stderr_iter.peek().is_some() {
+            if let Some(line) = stdout_iter.next() {
                 if output.len() < max_size {
                     if !output.is_empty() {
                         output.push('\n');
@@ -244,12 +273,7 @@ pub async fn execute_command(
                     output.push_str(&line);
                 }
             }
-        }
-
-        // Read stderr
-        if let Some(stderr) = stderr {
-            let mut reader = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = reader.next_line().await {
+            if let Some(line) = stderr_iter.next() {
                 if output.len() < max_size {
                     if !output.is_empty() {
                         output.push('\n');

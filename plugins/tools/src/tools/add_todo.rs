@@ -5,7 +5,7 @@
 use super::{Mode, Tool, ToolContext, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
-use std::process::Command;
+use tokio::process::Command;
 
 /// Tool for adding todos/action items.
 pub struct AddTodoTool;
@@ -41,7 +41,7 @@ mod macos {
     use super::*;
 
     /// Add a reminder using AppleScript (Apple Reminders app).
-    pub fn add_reminder(
+    pub async fn add_reminder(
         title: &str,
         notes: Option<&str>,
         list: Option<&str>,
@@ -84,6 +84,7 @@ mod macos {
         let output = Command::new("osascript")
             .args(["-e", &script])
             .output()
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("osascript failed: {}", e)))?;
 
         if output.status.success() {
@@ -98,7 +99,7 @@ mod macos {
     }
 
     /// List available reminder lists.
-    pub fn list_reminder_lists() -> Result<Vec<String>, ToolError> {
+    pub async fn list_reminder_lists() -> Result<Vec<String>, ToolError> {
         let script = r#"
             tell application "Reminders"
                 set listNames to name of every list
@@ -113,6 +114,7 @@ mod macos {
         let output = Command::new("osascript")
             .args(["-e", script])
             .output()
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("osascript failed: {}", e)))?;
 
         if output.status.success() {
@@ -134,7 +136,7 @@ mod macos {
 mod macos {
     use super::*;
 
-    pub fn add_reminder(
+    pub async fn add_reminder(
         _title: &str,
         _notes: Option<&str>,
         _list: Option<&str>,
@@ -145,7 +147,7 @@ mod macos {
         ))
     }
 
-    pub fn list_reminder_lists() -> Result<Vec<String>, ToolError> {
+    pub async fn list_reminder_lists() -> Result<Vec<String>, ToolError> {
         Err(ToolError::ExecutionFailed(
             "Add todo is only supported on macOS".to_string(),
         ))
@@ -243,7 +245,7 @@ impl Tool for AddTodoTool {
                     .map(Priority::parse)
                     .unwrap_or(Priority::Medium);
 
-                let message = macos::add_reminder(title, notes, list, priority)?;
+                let message = macos::add_reminder(title, notes, list, priority).await?;
 
                 Ok(ToolResult {
                     event_name: "tools:add_todo",
@@ -258,7 +260,7 @@ impl Tool for AddTodoTool {
                 })
             }
             "list_lists" => {
-                let lists = macos::list_reminder_lists()?;
+                let lists = macos::list_reminder_lists().await?;
 
                 Ok(ToolResult {
                     event_name: "tools:add_todo",

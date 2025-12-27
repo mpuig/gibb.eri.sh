@@ -4,18 +4,32 @@
 //! separated from Tauri state management and async IO.
 
 use crate::functiongemma::Proposal;
-use crate::policy::{CLARIFICATION_THRESHOLD, MIN_CONFIDENCE};
 use crate::tool_manifest::ToolPolicy;
 use gibberish_context::Mode;
 use std::collections::HashMap;
 
+/// Default minimum confidence threshold for tool proposals.
+pub const DEFAULT_MIN_CONFIDENCE: f32 = 0.35;
+
+/// Default clarification threshold. Proposals with confidence between
+/// min_confidence and this value trigger clarification requests.
+pub const DEFAULT_CLARIFICATION_THRESHOLD: f32 = 0.50;
+
 /// Configuration for router decision-making.
+///
+/// All policy values are configurable, with sensible defaults.
 #[derive(Debug, Clone)]
 pub struct RouterConfig {
+    /// Auto-execute read-only tools without approval.
     pub auto_run_read_only: bool,
+    /// Auto-execute ALL tools without approval (dangerous, for testing).
     pub auto_run_all: bool,
+    /// Current operating mode for filtering tools.
     pub current_mode: Mode,
+    /// Minimum confidence threshold for tool proposals.
     pub min_confidence: f32,
+    /// Confidence below this triggers clarification instead of execution.
+    pub clarification_threshold: f32,
 }
 
 impl Default for RouterConfig {
@@ -24,16 +38,13 @@ impl Default for RouterConfig {
             auto_run_read_only: true,
             auto_run_all: false,
             current_mode: Mode::Global,
-            min_confidence: MIN_CONFIDENCE,
+            min_confidence: DEFAULT_MIN_CONFIDENCE,
+            clarification_threshold: DEFAULT_CLARIFICATION_THRESHOLD,
         }
     }
 }
 
 /// Find the best proposal above confidence threshold.
-///
-/// Returns the highest-confidence proposal that:
-/// 1. Meets the minimum confidence threshold
-/// 2. Has a matching policy in the tool registry
 pub fn find_best_proposal<'a>(
     proposals: &'a [Proposal],
     policies: &HashMap<String, ToolPolicy>,
@@ -51,53 +62,37 @@ pub fn find_best_proposal<'a>(
 }
 
 /// Determine execution mode based on policy and config.
-///
-/// Returns true if should auto-execute, false if needs approval.
 pub fn determine_execution_mode(policy: &ToolPolicy, config: &RouterConfig) -> bool {
     config.auto_run_all || (policy.read_only && config.auto_run_read_only)
 }
 
 /// Check if a proposal needs clarification due to low confidence.
 ///
-/// Returns true if the proposal's confidence is between MIN_CONFIDENCE
-/// and CLARIFICATION_THRESHOLD, indicating we should ask the user
-/// to clarify their intent.
-pub fn needs_clarification(proposal: &Proposal) -> bool {
-    proposal.confidence >= MIN_CONFIDENCE && proposal.confidence < CLARIFICATION_THRESHOLD
+/// Returns true if the proposal's confidence is between min_confidence
+/// and clarification_threshold.
+pub fn needs_clarification(proposal: &Proposal, config: &RouterConfig) -> bool {
+    proposal.confidence >= config.min_confidence
+        && proposal.confidence < config.clarification_threshold
 }
 
 /// Suggested clarification questions based on the proposal.
 pub fn clarification_suggestions(proposal: &Proposal, user_text: &str) -> Vec<String> {
     let mut suggestions = Vec::new();
-
-    // Generic clarification suggestions
     suggestions.push(format!(
         "Did you mean to use '{}' for \"{}\"?",
         proposal.tool,
         truncate_text(user_text, 50)
     ));
-
-    // Tool-specific suggestions
     match proposal.tool.as_str() {
-        "typer" => {
-            suggestions.push("What text would you like me to type?".to_string());
-        }
-        "web_search" => {
-            suggestions.push("What would you like me to search for?".to_string());
-        }
-        "app_launcher" => {
-            suggestions.push("Which application should I open?".to_string());
-        }
-        "system_control" => {
-            suggestions.push("What system action would you like?".to_string());
-        }
+        "typer" => suggestions.push("What text would you like me to type?".to_string()),
+        "web_search" => suggestions.push("What would you like me to search for?".to_string()),
+        "app_launcher" => suggestions.push("Which application should I open?".to_string()),
+        "system_control" => suggestions.push("What system action would you like?".to_string()),
         _ => {}
     }
-
     suggestions
 }
 
-/// Truncate text for display, adding ellipsis if needed.
 fn truncate_text(text: &str, max_len: usize) -> String {
     if text.len() <= max_len {
         text.to_string()
@@ -114,7 +109,7 @@ mod tests {
         Proposal {
             tool: tool.to_string(),
             args: serde_json::json!({}),
-            evidence: "test evidence".to_string(),
+            evidence: "test".to_string(),
             confidence,
         }
     }
@@ -133,7 +128,7 @@ mod tests {
     fn test_find_best_proposal_filters_by_confidence() {
         let proposals = vec![
             make_proposal("tool_a", 0.9),
-            make_proposal("tool_b", 0.2), // below threshold
+            make_proposal("tool_b", 0.2),
         ];
         let mut policies = HashMap::new();
         policies.insert("tool_a".to_string(), make_policy(true));
@@ -158,37 +153,114 @@ mod tests {
 
     #[test]
     fn test_determine_execution_mode_auto_run_read_only() {
-        let policy = make_policy(true); // read-only
+        let policy = make_policy(true);
         let config = RouterConfig {
             auto_run_read_only: true,
             auto_run_all: false,
             current_mode: Mode::Global,
             min_confidence: 0.5,
+            clarification_threshold: 0.6,
         };
         assert!(determine_execution_mode(&policy, &config));
     }
 
     #[test]
     fn test_determine_execution_mode_require_approval_non_readonly() {
-        let policy = make_policy(false); // not read-only
+        let policy = make_policy(false);
         let config = RouterConfig {
             auto_run_read_only: true,
             auto_run_all: false,
             current_mode: Mode::Global,
             min_confidence: 0.5,
+            clarification_threshold: 0.6,
         };
         assert!(!determine_execution_mode(&policy, &config));
     }
 
     #[test]
     fn test_determine_execution_mode_auto_run_all_overrides() {
-        let policy = make_policy(false); // not read-only
+        let policy = make_policy(false);
         let config = RouterConfig {
             auto_run_read_only: false,
-            auto_run_all: true, // Override - run everything
+            auto_run_all: true,
             current_mode: Mode::Global,
             min_confidence: 0.5,
+            clarification_threshold: 0.6,
         };
         assert!(determine_execution_mode(&policy, &config));
+    }
+
+    #[test]
+    fn scenario_web_search_global() {
+        let config = RouterConfig {
+            current_mode: Mode::Global,
+            min_confidence: 0.6,
+            auto_run_read_only: true,
+            ..Default::default()
+        };
+        let proposals = vec![make_proposal("web_search", 0.85)];
+        let mut policies = HashMap::new();
+        policies.insert("web_search".to_string(), make_policy(true));
+
+        let best = find_best_proposal(&proposals, &policies, config.min_confidence).unwrap();
+        assert_eq!(best.tool, "web_search");
+        let policy = policies.get("web_search").unwrap();
+        assert!(determine_execution_mode(policy, &config));
+    }
+
+    #[test]
+    fn scenario_dangerous_git_dev() {
+        let config = RouterConfig {
+            current_mode: Mode::Dev,
+            auto_run_read_only: true,
+            ..Default::default()
+        };
+        let proposals = vec![make_proposal("git_reset", 0.90)];
+        let mut policies = HashMap::new();
+        policies.insert("git_reset".to_string(), make_policy(false));
+
+        let best = find_best_proposal(&proposals, &policies, config.min_confidence).unwrap();
+        assert_eq!(best.tool, "git_reset");
+        let policy = policies.get("git_reset").unwrap();
+        assert!(!determine_execution_mode(policy, &config));
+    }
+
+    #[test]
+    fn scenario_clarification_low_confidence() {
+        // Test uses default config: min_confidence=0.35, clarification_threshold=0.50
+        // Proposal 0.40 falls in between, triggering clarification.
+        let config = RouterConfig::default();
+        let proposals = vec![make_proposal("app_launcher", 0.40)];
+        let mut policies = HashMap::new();
+        policies.insert("app_launcher".to_string(), make_policy(true));
+
+        let best = find_best_proposal(&proposals, &policies, config.min_confidence).unwrap();
+        assert!(needs_clarification(best, &config));
+    }
+
+    #[test]
+    fn scenario_multi_tool_competition() {
+        let config = RouterConfig::default();
+        let proposals = vec![
+            make_proposal("system_control", 0.4),
+            make_proposal("app_launcher", 0.85),
+        ];
+        let mut policies = HashMap::new();
+        policies.insert("app_launcher".to_string(), make_policy(true));
+        policies.insert("system_control".to_string(), make_policy(true));
+
+        let best = find_best_proposal(&proposals, &policies, config.min_confidence).unwrap();
+        assert_eq!(best.tool, "app_launcher");
+    }
+
+    #[test]
+    fn scenario_open_ended_chat_no_match() {
+        let config = RouterConfig::default();
+        let proposals = vec![];
+        let mut policies = HashMap::new();
+        policies.insert("web_search".to_string(), make_policy(true));
+
+        let best = find_best_proposal(&proposals, &policies, config.min_confidence);
+        assert!(best.is_none());
     }
 }

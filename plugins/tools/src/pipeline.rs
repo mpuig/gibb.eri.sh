@@ -35,31 +35,6 @@ pub struct PipelineStep {
     pub depth: usize,
 }
 
-/// Outcome of a pipeline step execution.
-#[derive(Debug)]
-pub enum StepOutcome {
-    /// Tool executed successfully with output
-    Success {
-        tool: String,
-        output: serde_json::Value,
-        depth: usize,
-    },
-    /// Tool requires user approval (not auto-run)
-    PendingApproval {
-        tool: String,
-        args: serde_json::Value,
-    },
-    /// Tool execution failed
-    Error {
-        tool: String,
-        error: String,
-    },
-    /// No valid tool proposal found
-    NoProposal,
-    /// Chain depth limit reached
-    DepthLimitReached,
-}
-
 /// Context passed through the pipeline.
 #[derive(Debug, Clone)]
 pub struct PipelineContext {

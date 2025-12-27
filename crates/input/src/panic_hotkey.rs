@@ -3,8 +3,17 @@
 //! Listens for 3 consecutive Escape key presses within a short time window
 //! and triggers an abort callback. This provides a safety mechanism to
 //! immediately stop any ongoing input operation.
+//!
+//! IMPLEMENTATION NOTE:
+//! We use `device_query` (polling) instead of `rdev` (event hooks) to avoid
+//! crashing on macOS. `rdev` calls `TSMCurrentKeyboardInputSourceRefCreate`
+//! which is not thread-safe and causes a `dispatch_assert_queue_fail` on
+//! recent macOS versions when run in a background thread.
+//!
+//! Polling at 50ms is sufficient to detect human key presses (usually >100ms)
+//! while using negligible CPU.
 
-use rdev::{listen, Event, EventType, Key};
+use device_query::{DeviceQuery, DeviceState, Keycode};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -14,6 +23,9 @@ const ESC_COUNT_THRESHOLD: usize = 3;
 
 /// Time window for consecutive Esc presses (1 second).
 const ESC_WINDOW: Duration = Duration::from_secs(1);
+
+/// Polling interval for key state.
+const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Handle to control the panic hotkey listener.
 pub struct PanicHotkeyHandle {
@@ -40,34 +52,24 @@ impl Drop for PanicHotkeyHandle {
 
 /// Start the global panic hotkey listener.
 ///
-/// This spawns a background thread that listens for global key events.
+/// This spawns a background thread that polls global key state.
 /// When 3 Escape presses are detected within 1 second, the provided
 /// abort flag is set to true.
-///
-/// # Arguments
-///
-/// * `abort_flag` - Atomic flag to set when panic hotkey is triggered.
-///
-/// # Returns
-///
-/// A handle to stop the listener when done.
-///
-/// # Note
-///
-/// On macOS, this requires Accessibility permissions to receive global key events.
 pub fn start_panic_hotkey_listener(abort_flag: Arc<AtomicBool>) -> PanicHotkeyHandle {
     let running = Arc::new(AtomicBool::new(true));
     let running_clone = Arc::clone(&running);
 
     std::thread::spawn(move || {
+        let device_state = DeviceState::new();
         let mut esc_times: Vec<Instant> = Vec::with_capacity(ESC_COUNT_THRESHOLD);
+        let mut was_esc_pressed = false;
 
-        let callback = move |event: Event| {
-            if !running_clone.load(Ordering::SeqCst) {
-                return;
-            }
+        while running_clone.load(Ordering::SeqCst) {
+            let keys = device_state.get_keys();
+            let is_esc_pressed = keys.contains(&Keycode::Escape);
 
-            if let EventType::KeyPress(Key::Escape) = event.event_type {
+            // Detect Rising Edge (Press)
+            if is_esc_pressed && !was_esc_pressed {
                 let now = Instant::now();
 
                 // Remove old timestamps outside the window
@@ -88,11 +90,9 @@ pub fn start_panic_hotkey_listener(abort_flag: Arc<AtomicBool>) -> PanicHotkeyHa
                     esc_times.clear();
                 }
             }
-        };
 
-        // Start listening - this blocks until an error occurs
-        if let Err(e) = listen(callback) {
-            tracing::error!(error = ?e, "Panic hotkey listener failed");
+            was_esc_pressed = is_esc_pressed;
+            std::thread::sleep(POLL_INTERVAL);
         }
     });
 
@@ -114,7 +114,7 @@ mod tests {
         handle.stop();
         assert!(!handle.is_running());
 
-        // Flag should be unchanged (no actual key events)
+        // Flag should be unchanged
         assert!(!flag.load(Ordering::SeqCst));
     }
 }

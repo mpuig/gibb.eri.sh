@@ -11,8 +11,8 @@ thiserror.workspace = true
 # Input simulation
 enigo = "0.2"
 
-# Global key event listening (for panic hotkey)
-rdev = "0.5"
+# Global key event listening (polling safe alternative to rdev)
+device_query = "2.1"
 
 # Clipboard access (for paste-to-type with clipboard restore)
 arboard = "3.4"

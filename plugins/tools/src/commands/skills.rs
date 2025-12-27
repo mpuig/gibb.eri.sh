@@ -21,11 +21,7 @@ pub async fn reload_skills(state: State<'_, SharedState>) -> Result<SkillReloadR
     Ok(SkillReloadResult {
         skill_count: result.skill_count,
         tool_count: result.tool_count,
-        errors: result
-            .errors
-            .iter()
-            .map(|(path, err)| format!("{}: {}", path.display(), err))
-            .collect(),
+        errors: result.errors.iter().map(|err| err.to_string()).collect(),
     })
 }
 

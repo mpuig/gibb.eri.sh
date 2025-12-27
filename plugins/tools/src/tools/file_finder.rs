@@ -1,11 +1,11 @@
 //! File finder tool implementation (The Navigator).
-//!
+//! 
 //! Finds and opens files via Spotlight/mdfind on macOS.
 
 use super::{Mode, Tool, ToolContext, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
-use std::process::Command;
+use tokio::process::Command;
 
 /// Tool for finding and opening files.
 pub struct FileFinderTool;
@@ -15,7 +15,7 @@ mod macos {
     use super::*;
 
     /// Search for files using mdfind (Spotlight).
-    pub fn find_files(
+    pub async fn find_files(
         query: &str,
         scope: Option<&str>,
         limit: usize,
@@ -31,6 +31,7 @@ mod macos {
 
         let output = cmd
             .output()
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("mdfind failed: {}", e)))?;
 
         if !output.status.success() {
@@ -51,10 +52,11 @@ mod macos {
     }
 
     /// Open a file in the default application.
-    pub fn open_file(path: &str) -> Result<String, ToolError> {
+    pub async fn open_file(path: &str) -> Result<String, ToolError> {
         let output = Command::new("open")
             .arg(path)
             .output()
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("open failed: {}", e)))?;
 
         if output.status.success() {
@@ -69,10 +71,11 @@ mod macos {
     }
 
     /// Open a file in a specific application.
-    pub fn open_with(path: &str, app: &str) -> Result<String, ToolError> {
+    pub async fn open_with(path: &str, app: &str) -> Result<String, ToolError> {
         let output = Command::new("open")
             .args(["-a", app, path])
             .output()
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("open failed: {}", e)))?;
 
         if output.status.success() {
@@ -87,10 +90,11 @@ mod macos {
     }
 
     /// Reveal a file in Finder.
-    pub fn reveal_in_finder(path: &str) -> Result<String, ToolError> {
+    pub async fn reveal_in_finder(path: &str) -> Result<String, ToolError> {
         let output = Command::new("open")
             .args(["-R", path])
             .output()
+            .await
             .map_err(|e| ToolError::ExecutionFailed(format!("open failed: {}", e)))?;
 
         if output.status.success() {
@@ -109,7 +113,7 @@ mod macos {
 mod macos {
     use super::*;
 
-    pub fn find_files(
+    pub async fn find_files(
         _query: &str,
         _scope: Option<&str>,
         _limit: usize,
@@ -119,19 +123,19 @@ mod macos {
         ))
     }
 
-    pub fn open_file(_path: &str) -> Result<String, ToolError> {
+    pub async fn open_file(_path: &str) -> Result<String, ToolError> {
         Err(ToolError::ExecutionFailed(
             "File finder is only supported on macOS".to_string(),
         ))
     }
 
-    pub fn open_with(_path: &str, _app: &str) -> Result<String, ToolError> {
+    pub async fn open_with(_path: &str, _app: &str) -> Result<String, ToolError> {
         Err(ToolError::ExecutionFailed(
             "File finder is only supported on macOS".to_string(),
         ))
     }
 
-    pub fn reveal_in_finder(_path: &str) -> Result<String, ToolError> {
+    pub async fn reveal_in_finder(_path: &str) -> Result<String, ToolError> {
         Err(ToolError::ExecutionFailed(
             "File finder is only supported on macOS".to_string(),
         ))
@@ -246,7 +250,7 @@ impl Tool for FileFinderTool {
                     .map(|n| n as usize)
                     .unwrap_or(10);
 
-                let results = macos::find_files(query, scope, limit)?;
+                let results = macos::find_files(query, scope, limit).await?;
 
                 Ok(ToolResult {
                     event_name: "tools:file_finder",
@@ -267,9 +271,9 @@ impl Tool for FileFinderTool {
                     .ok_or(ToolError::MissingArg("path"))?;
 
                 let message = if let Some(app) = args.get("app").and_then(|v| v.as_str()) {
-                    macos::open_with(path, app)?
+                    macos::open_with(path, app).await? 
                 } else {
-                    macos::open_file(path)?
+                    macos::open_file(path).await?
                 };
 
                 Ok(ToolResult {
@@ -289,7 +293,7 @@ impl Tool for FileFinderTool {
                     .and_then(|v| v.as_str())
                     .ok_or(ToolError::MissingArg("path"))?;
 
-                let message = macos::reveal_in_finder(path)?;
+                let message = macos::reveal_in_finder(path).await?;
 
                 Ok(ToolResult {
                     event_name: "tools:file_finder",

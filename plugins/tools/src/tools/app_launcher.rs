@@ -12,13 +12,14 @@ pub struct AppLauncherTool;
 #[cfg(target_os = "macos")]
 mod macos {
     use super::*;
-    use std::process::Command;
+    use tokio::process::Command;
 
     pub async fn open_app(app_name: &str) -> Result<String, ToolError> {
         // Try to open by name first
         let output = Command::new("open")
             .args(["-a", app_name])
             .output()
+            .await
             .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
 
         if output.status.success() {
@@ -50,6 +51,7 @@ mod macos {
             let output = Command::new("osascript")
                 .args(["-e", &script])
                 .output()
+                .await
                 .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
 
             if output.status.success() {
@@ -80,6 +82,7 @@ mod macos {
         let output = Command::new("osascript")
             .args(["-e", script])
             .output()
+            .await
             .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
 
         if output.status.success() {

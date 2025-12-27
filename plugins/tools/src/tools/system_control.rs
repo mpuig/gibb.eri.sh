@@ -39,21 +39,21 @@ impl SystemAction {
 #[cfg(target_os = "macos")]
 mod macos {
     use super::*;
-    use std::process::Command;
+    use tokio::process::Command;
 
     pub async fn execute_action(action: SystemAction) -> Result<String, ToolError> {
         match action {
             SystemAction::SetVolume(level) => {
                 let script = format!("set volume output volume {}", level);
-                run_osascript(&script)?;
+                run_osascript(&script).await?;
                 Ok(format!("Volume set to {}%", level))
             }
             SystemAction::Mute => {
-                run_osascript("set volume output muted true")?;
+                run_osascript("set volume output muted true").await?;
                 Ok("Audio muted".to_string())
             }
             SystemAction::Unmute => {
-                run_osascript("set volume output muted false")?;
+                run_osascript("set volume output muted false").await?;
                 Ok("Audio unmuted".to_string())
             }
             SystemAction::ToggleMute => {
@@ -67,7 +67,7 @@ mod macos {
                         return "muted"
                     end if
                 "#;
-                let result = run_osascript(script)?;
+                let result = run_osascript(script).await?;
                 Ok(format!("Audio {}", result.trim()))
             }
             SystemAction::Sleep => {
@@ -75,6 +75,7 @@ mod macos {
                 Command::new("pmset")
                     .args(["sleepnow"])
                     .output()
+                    .await
                     .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
                 Ok("System going to sleep".to_string())
             }
@@ -92,7 +93,7 @@ mod macos {
                 "#;
                 // Note: This is complex and may not work reliably
                 // For now, return an informational message
-                run_osascript(script).ok();
+                run_osascript(script).await.ok();
                 Ok("Do Not Disturb toggle attempted (may require manual confirmation)".to_string())
             }
             SystemAction::DisableDnd => {
@@ -105,10 +106,11 @@ mod macos {
         }
     }
 
-    fn run_osascript(script: &str) -> Result<String, ToolError> {
+    async fn run_osascript(script: &str) -> Result<String, ToolError> {
         let output = Command::new("osascript")
             .args(["-e", script])
             .output()
+            .await
             .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
 
         if output.status.success() {
