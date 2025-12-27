@@ -137,9 +137,9 @@ pub fn resolve_args(
                         "clipboard" | "selection" | "last_transcript" | "literal"
                     ) {
                         // Try to parse as Reference
-                        if let Ok(reference) =
-                            serde_json::from_value::<Reference>(serde_json::Value::Object(map.clone()))
-                        {
+                        if let Ok(reference) = serde_json::from_value::<Reference>(
+                            serde_json::Value::Object(map.clone()),
+                        ) {
                             let resolved = resolve_reference(&reference, ctx)?;
                             return Ok(serde_json::Value::String(resolved));
                         }
@@ -155,8 +155,7 @@ pub fn resolve_args(
             Ok(serde_json::Value::Object(result))
         }
         serde_json::Value::Array(arr) => {
-            let resolved: Result<Vec<_>, _> =
-                arr.iter().map(|v| resolve_args(v, ctx)).collect();
+            let resolved: Result<Vec<_>, _> = arr.iter().map(|v| resolve_args(v, ctx)).collect();
             Ok(serde_json::Value::Array(resolved?))
         }
         // Primitives pass through unchanged

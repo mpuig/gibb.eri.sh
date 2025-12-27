@@ -99,6 +99,7 @@ gibberish-smart-turn = { path = "crates/smart-turn" }
 gibberish-bus = { path = "crates/bus" }
 gibberish-context = { path = "crates/context" }
 gibberish-events = { path = "crates/events" }
+gibberish-input = { path = "crates/input" }
 
 # Internal plugins
 tauri-plugin-gibberish-tray = { path = "plugins/tray" }

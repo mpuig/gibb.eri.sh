@@ -200,8 +200,16 @@ impl From<&ContextState> for ContextChangedEvent {
     fn from(state: &ContextState) -> Self {
         Self {
             mode: state.effective_mode(),
-            active_app: state.system.active_app.as_ref().map(|a| a.bundle_id.clone()),
-            active_app_name: state.system.active_app.as_ref().and_then(|a| a.name.clone()),
+            active_app: state
+                .system
+                .active_app
+                .as_ref()
+                .map(|a| a.bundle_id.clone()),
+            active_app_name: state
+                .system
+                .active_app
+                .as_ref()
+                .and_then(|a| a.name.clone()),
             is_meeting: state.system.has_meeting_app() && state.system.is_mic_active,
             timestamp_ms: state.system.timestamp_ms,
         }

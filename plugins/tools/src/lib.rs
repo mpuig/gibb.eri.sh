@@ -60,6 +60,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::get_context,
             commands::pin_context_mode,
             commands::unpin_context_mode,
+            commands::check_input_access,
+            commands::request_input_access,
         ])
         .setup(|app, _api| {
             app.manage(Arc::new(Mutex::new(state::ToolsState::default())));
@@ -87,42 +89,44 @@ fn start_context_poller<R: Runtime>(app: &tauri::AppHandle<R>) {
     let app_handle = app.clone();
     let state = app.state::<SharedState>().inner().clone();
 
-    let callback: gibberish_context::ContextCallback = Arc::new(move |event: ContextChangedEvent| {
-        tracing::debug!(mode = %event.mode, app = ?event.active_app, "context changed");
+    let callback: gibberish_context::ContextCallback = Arc::new(
+        move |event: ContextChangedEvent| {
+            tracing::debug!(mode = %event.mode, app = ?event.active_app, "context changed");
 
-        // Update the context state in SharedState
-        if let Ok(mut guard) = state.try_lock() {
-            let prev_mode = guard.context.effective_mode();
-            let new_mode = if guard.context.pinned_mode.is_some() {
-                guard.context.pinned_mode.unwrap()
-            } else {
-                event.mode
-            };
+            // Update the context state in SharedState
+            if let Ok(mut guard) = state.try_lock() {
+                let prev_mode = guard.context.effective_mode();
+                let new_mode = if guard.context.pinned_mode.is_some() {
+                    guard.context.pinned_mode.unwrap()
+                } else {
+                    event.mode
+                };
 
-            guard.context.detected_mode = event.mode;
-            if let Some(ref bundle_id) = event.active_app {
-                guard.context.system.active_app = Some(gibberish_context::AppInfo {
-                    bundle_id: bundle_id.clone(),
-                    name: event.active_app_name.clone(),
-                });
-            } else {
-                guard.context.system.active_app = None;
+                guard.context.detected_mode = event.mode;
+                if let Some(ref bundle_id) = event.active_app {
+                    guard.context.system.active_app = Some(gibberish_context::AppInfo {
+                        bundle_id: bundle_id.clone(),
+                        name: event.active_app_name.clone(),
+                    });
+                } else {
+                    guard.context.system.active_app = None;
+                }
+                guard.context.system.is_mic_active = event.is_meeting;
+                guard.context.system.timestamp_ms = event.timestamp_ms;
+
+                // Update router manifest if mode changed
+                if prev_mode != new_mode {
+                    tracing::info!(prev = %prev_mode, new = %new_mode, "Mode changed, updating router manifest");
+                    guard.router.update_for_mode(new_mode);
+                }
             }
-            guard.context.system.is_mic_active = event.is_meeting;
-            guard.context.system.timestamp_ms = event.timestamp_ms;
 
-            // Update router manifest if mode changed
-            if prev_mode != new_mode {
-                tracing::info!(prev = %prev_mode, new = %new_mode, "Mode changed, updating router manifest");
-                guard.router.update_for_mode(new_mode);
+            // Emit event to frontend
+            if let Err(e) = app_handle.emit(event_names::CONTEXT_CHANGED, &event) {
+                tracing::warn!("Failed to emit context:changed event: {}", e);
             }
-        }
-
-        // Emit event to frontend
-        if let Err(e) = app_handle.emit(event_names::CONTEXT_CHANGED, &event) {
-            tracing::warn!("Failed to emit context:changed event: {}", e);
-        }
-    });
+        },
+    );
 
     poller.start(provider, callback);
 

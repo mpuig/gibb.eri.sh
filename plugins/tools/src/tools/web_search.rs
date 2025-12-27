@@ -61,10 +61,7 @@ impl Tool for WebSearchTool {
             .get("source")
             .and_then(|v| v.as_str())
             .unwrap_or("wikipedia");
-        let lang = args
-            .get("lang")
-            .and_then(|v| v.as_str())
-            .unwrap_or("en");
+        let lang = args.get("lang").and_then(|v| v.as_str()).unwrap_or("en");
         Some(format!("{}:{}:{}", source, lang, query.to_lowercase()))
     }
 

@@ -4,8 +4,11 @@
 
 use std::time::Duration;
 
-/// Cooldown between queries for the same city.
-pub const CITY_COOLDOWN: Duration = Duration::from_secs(45);
+/// Default cooldown between repeated calls for the same tool+args key.
+///
+/// Tool-specific throttling can be added later via user settings/policies, but
+/// this provides a safe baseline to avoid rapid repeated calls during streaming.
+pub const DEFAULT_TOOL_COOLDOWN: Duration = Duration::from_secs(45);
 
 /// Debounce delay for router queue processing.
 pub const DEBOUNCE: Duration = Duration::from_millis(650);
@@ -19,7 +22,7 @@ mod tests {
 
     #[test]
     fn test_constants() {
-        assert!(CITY_COOLDOWN.as_secs() > 0);
+        assert!(DEFAULT_TOOL_COOLDOWN.as_secs() > 0);
         assert!(DEBOUNCE.as_millis() > 0);
         assert!(CACHE_TTL.as_secs() > 0);
     }

@@ -254,7 +254,7 @@ mod tests {
     fn test_parse_bare_value_number() {
         assert_eq!(parse_bare_value("42"), serde_json::json!(42));
         assert_eq!(parse_bare_value("-10"), serde_json::json!(-10));
-        assert_eq!(parse_bare_value("3.14"), serde_json::json!(3.14));
+        assert_eq!(parse_bare_value("2.5"), serde_json::json!(2.5));
     }
 
     #[test]

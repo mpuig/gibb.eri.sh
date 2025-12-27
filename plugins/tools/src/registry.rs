@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use crate::tool_manifest::ToolPolicy;
 use crate::tools::{
-    AddTodoTool, AppLauncherTool, FileFinderTool, GitVoiceTool, SystemControlTool,
-    Tool, ToolDefinition, ToolInfo, ToolInfoProvider, TranscriptMarkerTool, WebSearchTool,
+    AddTodoTool, AppLauncherTool, FileFinderTool, GitVoiceTool, SystemControlTool, Tool,
+    ToolDefinition, ToolInfo, ToolInfoProvider, TranscriptMarkerTool, TyperTool, WebSearchTool,
 };
 use gibberish_context::Mode;
 
@@ -27,6 +27,7 @@ const ALL_TOOL_NAMES: &[&str] = &[
     "file_finder",
     "add_todo",
     "transcript_marker",
+    "typer",
 ];
 
 impl ToolRegistry {
@@ -242,6 +243,8 @@ fn create_tool(name: &str) -> Option<Arc<dyn Tool>> {
         // Meeting mode tools
         "add_todo" => Some(Arc::new(AddTodoTool)),
         "transcript_marker" => Some(Arc::new(TranscriptMarkerTool)),
+        // Global tools (with special permissions)
+        "typer" => Some(Arc::new(TyperTool)),
         _ => None,
     }
 }

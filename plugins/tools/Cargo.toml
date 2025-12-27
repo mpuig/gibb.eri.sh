@@ -22,6 +22,7 @@ chrono.workspace = true
 futures.workspace = true
 gibberish-context.workspace = true
 gibberish-events.workspace = true
+gibberish-input.workspace = true
 tokio-util.workspace = true
 half = "2"
 async-trait.workspace = true

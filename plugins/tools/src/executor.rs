@@ -10,7 +10,7 @@ use gibberish_events::event_names;
 use tauri::{Emitter, Runtime};
 
 use crate::environment::RealSystemEnvironment;
-use crate::policy::{CACHE_TTL, CITY_COOLDOWN};
+use crate::policy::{CACHE_TTL, DEFAULT_TOOL_COOLDOWN};
 use crate::registry::ToolRegistry;
 use crate::state::{CacheEntry, ToolsState};
 use crate::tools::{ToolContext, ToolError};
@@ -66,23 +66,24 @@ pub async fn execute_tool<R: Runtime>(
         return ExecutionOutcome::ProposalEmitted;
     }
 
-    // Build potential cache/cooldown key from args (tools define their key format)
-    // For now, we check cooldown using a simple normalized key from common args
-    let potential_key = build_potential_key(tool_name, args);
+    // Pre-compute keys from args, so caching/cooldowns work for any tool that
+    // implements `cache_key`/`cooldown_key` (not hardcoded per tool).
+    let cache_key = tool.cache_key(args);
+    let cooldown_key = tool.cooldown_key(args);
 
     // Check cooldown and cache in single lock scope
     let check_result = {
         let mut guard = state.lock().await;
 
-        // Check cooldown first (if we have a potential key)
-        if let Some(ref key) = potential_key {
-            if !should_execute(&mut guard, key) {
+        // Check cooldown first (if we have a key)
+        if let Some(ref key) = cooldown_key {
+            if !should_execute(&mut guard, tool_name, key) {
                 return ExecutionOutcome::Cooldown;
             }
         }
 
         // Check cache
-        potential_key.as_ref().and_then(|key| {
+        cache_key.as_ref().and_then(|key| {
             guard
                 .cache
                 .get(key)
@@ -124,6 +125,15 @@ pub async fn execute_tool<R: Runtime>(
                 );
             }
 
+            // Record cooldown if tool provided a cooldown key.
+            if let Some(ref cooldown_key) = result.cooldown_key {
+                let mut guard = state.lock().await;
+                guard
+                    .router
+                    .cooldowns
+                    .insert(format!("{tool_name}:{cooldown_key}"), Instant::now());
+            }
+
             // Emit the result using tool-provided event name and payload
             let _ = app.emit(result.event_name, &result.payload);
             emit_tool_done(app, tool_name, false);
@@ -136,37 +146,22 @@ pub async fn execute_tool<R: Runtime>(
     }
 }
 
-/// Build a potential cache/cooldown key from tool args.
-///
-/// This allows pre-execution cache/cooldown checks. The key format
-/// matches what tools produce in their ToolResult.
-fn build_potential_key(tool_name: &str, args: &serde_json::Value) -> Option<String> {
-    match tool_name {
-        "wikipedia_city_lookup" => {
-            let city = args.get("city").and_then(|v| v.as_str())?;
-            let lang = args.get("lang").and_then(|v| v.as_str()).unwrap_or("en");
-            Some(format!("{}:{}", lang, city.trim().to_lowercase()))
-        }
-        _ => None,
-    }
-}
-
 /// Check if we should execute based on cooldown.
-fn should_execute(state: &mut ToolsState, cooldown_key: &str) -> bool {
+fn should_execute(state: &mut ToolsState, tool_name: &str, cooldown_key: &str) -> bool {
+    let cooldown_key = cooldown_key.trim();
     if cooldown_key.is_empty() {
         return true;
     }
 
-    if let Some(last_at) = state.router.cooldowns.get(cooldown_key) {
-        if last_at.elapsed() < CITY_COOLDOWN {
+    let composite_key = format!("{tool_name}:{cooldown_key}");
+
+    if let Some(last_at) = state.router.cooldowns.get(&composite_key) {
+        if last_at.elapsed() < DEFAULT_TOOL_COOLDOWN {
             return false;
         }
     }
 
-    state
-        .router
-        .cooldowns
-        .insert(cooldown_key.to_string(), Instant::now());
+    state.router.cooldowns.insert(composite_key, Instant::now());
     true
 }
 

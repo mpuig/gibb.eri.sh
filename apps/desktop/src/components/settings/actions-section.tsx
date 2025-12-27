@@ -259,11 +259,93 @@ function ActionRouterCard() {
   );
 }
 
+function TyperCard() {
+  const [enabled, setEnabled] = useState(() => {
+    // Load from localStorage
+    const stored = localStorage.getItem("gibberish:typer_enabled");
+    return stored === "true";
+  });
+  const [hasAccess, setHasAccess] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    // Check accessibility permission status
+    invoke<boolean>("plugin:gibberish-tools|check_input_access")
+      .then(setHasAccess)
+      .catch(() => setHasAccess(null)); // Command not yet implemented
+  }, []);
+
+  const toggleEnabled = () => {
+    const next = !enabled;
+    setEnabled(next);
+    localStorage.setItem("gibberish:typer_enabled", String(next));
+  };
+
+  const requestAccess = () => {
+    invoke("plugin:gibberish-tools|request_input_access").catch(console.error);
+  };
+
+  return (
+    <div className="card p-4 space-y-3" style={{ background: "var(--color-bg-secondary)" }}>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="font-medium text-sm flex items-center gap-2" style={{ color: "var(--color-text-primary)" }}>
+            The Typer
+            <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: "rgba(99, 102, 241, 0.2)", color: "rgb(99, 102, 241)" }}>
+              Beta
+            </span>
+          </div>
+          <div className="text-xs mt-0.5" style={{ color: "var(--color-text-tertiary)" }}>
+            Type text by voice command. Say "type hello world" to type text.
+          </div>
+        </div>
+        <button
+          className="btn-secondary text-sm"
+          onClick={toggleEnabled}
+        >
+          {enabled ? "Disable" : "Enable"}
+        </button>
+      </div>
+
+      {enabled && hasAccess === false && (
+        <div
+          className="flex items-center justify-between p-2 rounded text-sm"
+          style={{ background: "rgba(255, 159, 10, 0.1)", border: "1px solid rgba(255, 159, 10, 0.25)" }}
+        >
+          <div style={{ color: "var(--color-text-secondary)" }}>
+            Accessibility permission required
+          </div>
+          <button
+            className="btn-secondary text-xs"
+            onClick={requestAccess}
+          >
+            Grant Access
+          </button>
+        </div>
+      )}
+
+      {enabled && hasAccess === true && (
+        <div
+          className="flex items-center gap-2 p-2 rounded text-sm"
+          style={{ background: "rgba(34, 197, 94, 0.1)", border: "1px solid rgba(34, 197, 94, 0.25)" }}
+        >
+          <svg className="w-4 h-4" style={{ color: "rgb(34, 197, 94)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          <span style={{ color: "var(--color-text-secondary)" }}>
+            Accessibility permission granted
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ActionsSection() {
   return (
-    <section>
+    <section className="space-y-4">
       <SectionHeader>Action Router</SectionHeader>
       <ActionRouterCard />
+      <TyperCard />
     </section>
   );
 }

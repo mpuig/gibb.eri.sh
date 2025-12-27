@@ -21,7 +21,7 @@ pub struct CommandOutput {
 }
 
 /// Error during command execution.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum CommandError {
     #[error("command not found: {0}")]
     NotFound(String),

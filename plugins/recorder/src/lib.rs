@@ -95,7 +95,10 @@ async fn start_recording<R: Runtime>(
     const LISTEN_BUFFER_SECS: f32 = 30.0;
 
     let handle = thread::spawn(move || {
-        tracing::info!("Recording thread started (listen_only={})", is_listen_only.load(Ordering::SeqCst));
+        tracing::info!(
+            "Recording thread started (listen_only={})",
+            is_listen_only.load(Ordering::SeqCst)
+        );
         let source = match source_type.unwrap_or(AudioSourceType::Microphone) {
             AudioSourceType::Microphone => AudioSource::Microphone { device_id },
             AudioSourceType::System => AudioSource::SystemAudio {

@@ -123,7 +123,9 @@ mod macos {
                 .collect();
             Ok(lists)
         } else {
-            Err(ToolError::ExecutionFailed("Failed to list reminders".to_string()))
+            Err(ToolError::ExecutionFailed(
+                "Failed to list reminders".to_string(),
+            ))
         }
     }
 }
@@ -216,10 +218,7 @@ impl Tool for AddTodoTool {
         args: &serde_json::Value,
         _ctx: &ToolContext,
     ) -> Result<ToolResult, ToolError> {
-        let action = args
-            .get("action")
-            .and_then(|v| v.as_str())
-            .unwrap_or("add");
+        let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("add");
 
         match action {
             "add" => {
@@ -265,7 +264,10 @@ impl Tool for AddTodoTool {
                     cooldown_key: None,
                 })
             }
-            _ => Err(ToolError::ExecutionFailed(format!("Unknown action: {}", action))),
+            _ => Err(ToolError::ExecutionFailed(format!(
+                "Unknown action: {}",
+                action
+            ))),
         }
     }
 }

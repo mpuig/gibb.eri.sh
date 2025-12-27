@@ -54,10 +54,7 @@ impl Tool for WikipediaTool {
 
     fn cache_key(&self, args: &serde_json::Value) -> Option<String> {
         let city = args.get("city")?.as_str()?;
-        let lang = args
-            .get("lang")
-            .and_then(|v| v.as_str())
-            .unwrap_or("en");
+        let lang = args.get("lang").and_then(|v| v.as_str()).unwrap_or("en");
         Some(format!("{}:{}", lang, city.to_lowercase()))
     }
 

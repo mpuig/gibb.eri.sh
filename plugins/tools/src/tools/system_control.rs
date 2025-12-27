@@ -97,7 +97,10 @@ mod macos {
             }
             SystemAction::DisableDnd => {
                 // Same complexity as enable
-                Ok("Do Not Disturb disable attempted (may require manual confirmation)".to_string())
+                Ok(
+                    "Do Not Disturb disable attempted (may require manual confirmation)"
+                        .to_string(),
+                )
             }
         }
     }
@@ -190,10 +193,7 @@ impl Tool for SystemControlTool {
             .and_then(|v| v.as_str())
             .ok_or(ToolError::MissingArg("action"))?;
 
-        let value = args
-            .get("value")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as u8);
+        let value = args.get("value").and_then(|v| v.as_u64()).map(|v| v as u8);
 
         let action = SystemAction::parse(action_str, value)
             .ok_or_else(|| ToolError::ExecutionFailed(format!("Unknown action: {}", action_str)))?;

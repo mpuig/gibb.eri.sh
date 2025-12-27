@@ -43,8 +43,7 @@ impl ActiveAppProvider for MacOSProvider {
 
 impl MicActivityProvider for MacOSProvider {
     fn is_mic_active(&self) -> bool {
-        self.mic_active
-            .load(std::sync::atomic::Ordering::SeqCst)
+        self.mic_active.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     fn get_mic_using_apps(&self) -> Vec<String> {
@@ -62,15 +61,11 @@ impl SystemStateProvider for MacOSProvider {
     }
 
     fn is_mic_active(&self) -> bool {
-        self.mic_active
-            .load(std::sync::atomic::Ordering::SeqCst)
+        self.mic_active.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     fn get_meeting_app(&self) -> Option<String> {
-        self.meeting_app
-            .read()
-            .ok()
-            .and_then(|guard| guard.clone())
+        self.meeting_app.read().ok().and_then(|guard| guard.clone())
     }
 }
 

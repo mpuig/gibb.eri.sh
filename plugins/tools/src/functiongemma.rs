@@ -554,8 +554,8 @@ Invalid output:\n\
         user_request: &str,
     ) -> Result<String, FunctionGemmaError> {
         // Build a prompt that asks the model to summarize the tool output
-        let output_preview = serde_json::to_string_pretty(tool_output)
-            .unwrap_or_else(|_| tool_output.to_string());
+        let output_preview =
+            serde_json::to_string_pretty(tool_output).unwrap_or_else(|_| tool_output.to_string());
 
         // Truncate output to avoid token limits
         let output_preview = if output_preview.len() > 800 {

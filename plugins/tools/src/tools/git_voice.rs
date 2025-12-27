@@ -122,11 +122,13 @@ impl GitCommand {
     fn is_read_only(&self) -> bool {
         matches!(
             self,
-            GitCommand::Status | GitCommand::Diff { .. } | GitCommand::Branch { name: None } | GitCommand::Log { .. }
+            GitCommand::Status
+                | GitCommand::Diff { .. }
+                | GitCommand::Branch { name: None }
+                | GitCommand::Log { .. }
         )
     }
 }
-
 
 #[async_trait]
 impl Tool for GitVoiceTool {

@@ -15,7 +15,11 @@ mod macos {
     use super::*;
 
     /// Search for files using mdfind (Spotlight).
-    pub fn find_files(query: &str, scope: Option<&str>, limit: usize) -> Result<Vec<String>, ToolError> {
+    pub fn find_files(
+        query: &str,
+        scope: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<String>, ToolError> {
         let mut cmd = Command::new("mdfind");
 
         // Add scope if provided
@@ -31,7 +35,10 @@ mod macos {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(ToolError::ExecutionFailed(format!("mdfind error: {}", stderr)));
+            return Err(ToolError::ExecutionFailed(format!(
+                "mdfind error: {}",
+                stderr
+            )));
         }
 
         let results: Vec<String> = String::from_utf8_lossy(&output.stdout)
@@ -54,7 +61,10 @@ mod macos {
             Ok(format!("Opened {}", path))
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(ToolError::ExecutionFailed(format!("Failed to open: {}", stderr)))
+            Err(ToolError::ExecutionFailed(format!(
+                "Failed to open: {}",
+                stderr
+            )))
         }
     }
 
@@ -69,7 +79,10 @@ mod macos {
             Ok(format!("Opened {} with {}", path, app))
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(ToolError::ExecutionFailed(format!("Failed to open: {}", stderr)))
+            Err(ToolError::ExecutionFailed(format!(
+                "Failed to open: {}",
+                stderr
+            )))
         }
     }
 
@@ -84,7 +97,10 @@ mod macos {
             Ok(format!("Revealed {} in Finder", path))
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            Err(ToolError::ExecutionFailed(format!("Failed to reveal: {}", stderr)))
+            Err(ToolError::ExecutionFailed(format!(
+                "Failed to reveal: {}",
+                stderr
+            )))
         }
     }
 }
@@ -93,20 +109,32 @@ mod macos {
 mod macos {
     use super::*;
 
-    pub fn find_files(_query: &str, _scope: Option<&str>, _limit: usize) -> Result<Vec<String>, ToolError> {
-        Err(ToolError::ExecutionFailed("File finder is only supported on macOS".to_string()))
+    pub fn find_files(
+        _query: &str,
+        _scope: Option<&str>,
+        _limit: usize,
+    ) -> Result<Vec<String>, ToolError> {
+        Err(ToolError::ExecutionFailed(
+            "File finder is only supported on macOS".to_string(),
+        ))
     }
 
     pub fn open_file(_path: &str) -> Result<String, ToolError> {
-        Err(ToolError::ExecutionFailed("File finder is only supported on macOS".to_string()))
+        Err(ToolError::ExecutionFailed(
+            "File finder is only supported on macOS".to_string(),
+        ))
     }
 
     pub fn open_with(_path: &str, _app: &str) -> Result<String, ToolError> {
-        Err(ToolError::ExecutionFailed("File finder is only supported on macOS".to_string()))
+        Err(ToolError::ExecutionFailed(
+            "File finder is only supported on macOS".to_string(),
+        ))
     }
 
     pub fn reveal_in_finder(_path: &str) -> Result<String, ToolError> {
-        Err(ToolError::ExecutionFailed("File finder is only supported on macOS".to_string()))
+        Err(ToolError::ExecutionFailed(
+            "File finder is only supported on macOS".to_string(),
+        ))
     }
 }
 
@@ -175,7 +203,10 @@ impl Tool for FileFinderTool {
     }
 
     fn cache_key(&self, args: &serde_json::Value) -> Option<String> {
-        let action = args.get("action").and_then(|v| v.as_str()).unwrap_or("find");
+        let action = args
+            .get("action")
+            .and_then(|v| v.as_str())
+            .unwrap_or("find");
         if action == "find" || action == "search" {
             args.get("query")
                 .and_then(|v| v.as_str())
@@ -265,7 +296,10 @@ impl Tool for FileFinderTool {
                     cooldown_key: Some(format!("reveal:{}", path)),
                 })
             }
-            _ => Err(ToolError::ExecutionFailed(format!("Unknown action: {}", action))),
+            _ => Err(ToolError::ExecutionFailed(format!(
+                "Unknown action: {}",
+                action
+            ))),
         }
     }
 }

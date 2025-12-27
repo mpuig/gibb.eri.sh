@@ -47,15 +47,15 @@ fn find_best_proposal<'a>(
         .iter()
         .filter(|p| p.confidence >= min_confidence)
         .filter(|p| policies.contains_key(&p.tool))
-        .max_by(|a, b| a.confidence.partial_cmp(&b.confidence).unwrap_or(std::cmp::Ordering::Equal))
+        .max_by(|a, b| {
+            a.confidence
+                .partial_cmp(&b.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
 }
 
 /// Check if a tool is available in the current mode.
-fn is_tool_available_in_mode(
-    registry: &ToolRegistry,
-    tool_name: &str,
-    mode: Mode,
-) -> bool {
+fn is_tool_available_in_mode(registry: &ToolRegistry, tool_name: &str, mode: Mode) -> bool {
     registry
         .get(tool_name)
         .map(|t| t.is_available_in(mode))
@@ -175,9 +175,13 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             developer_context, context_snippet
         );
 
-        emit_router_status(&app, "infer_start", serde_json::json!({
-            "context": context_snippet
-        }));
+        emit_router_status(
+            &app,
+            "infer_start",
+            serde_json::json!({
+                "context": context_snippet
+            }),
+        );
 
         let pending_text_for_model = pending_text.clone();
         let developer_context_for_model: Arc<str> = Arc::from(enriched_developer_context);
@@ -223,7 +227,9 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         };
 
         // Find the best proposal above confidence threshold
-        let Some(proposal) = find_best_proposal(&model_out.proposals, &tool_policies, min_confidence) else {
+        let Some(proposal) =
+            find_best_proposal(&model_out.proposals, &tool_policies, min_confidence)
+        else {
             // No valid tool call found - emit feedback
             emit_router_status(
                 &app,
@@ -379,9 +385,13 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                 let user_text = pending_text.clone();
                 let output_clone = output.clone();
 
-                emit_router_status(&app, "summary_start", serde_json::json!({
-                    "tool": tool_name
-                }));
+                emit_router_status(
+                    &app,
+                    "summary_start",
+                    serde_json::json!({
+                        "tool": tool_name
+                    }),
+                );
 
                 let summary_result = tokio::task::spawn_blocking(move || {
                     runner.summarize_tool_output(&tool_name, &output_clone, &user_text)

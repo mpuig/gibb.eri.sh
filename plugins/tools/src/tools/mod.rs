@@ -10,6 +10,7 @@ mod git_voice;
 mod help;
 mod system_control;
 mod transcript_marker;
+mod typer;
 mod web_search;
 mod wikipedia;
 
@@ -20,6 +21,7 @@ pub use git_voice::GitVoiceTool;
 pub use help::{ToolInfo, ToolInfoProvider};
 pub use system_control::SystemControlTool;
 pub use transcript_marker::TranscriptMarkerTool;
+pub use typer::TyperTool;
 pub use web_search::WebSearchTool;
 
 use async_trait::async_trait;
@@ -90,6 +92,9 @@ pub enum ToolError {
 
     #[error("execution failed: {0}")]
     ExecutionFailed(String),
+
+    #[error("permission denied: {0}")]
+    PermissionDenied(String),
 
     #[error("network error: {0}")]
     Network(#[from] reqwest::Error),
@@ -170,6 +175,14 @@ pub trait Tool: Send + Sync {
     #[allow(dead_code)]
     fn cache_key(&self, _args: &serde_json::Value) -> Option<String> {
         None
+    }
+
+    /// Generate a cooldown key for the given arguments.
+    ///
+    /// By default, cooldown follows the same key as caching.
+    #[allow(dead_code)]
+    fn cooldown_key(&self, args: &serde_json::Value) -> Option<String> {
+        self.cache_key(args)
     }
 
     /// Execute the tool with given arguments.

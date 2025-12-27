@@ -126,7 +126,8 @@ impl Tool for TranscriptMarkerTool {
                     .and_then(|v| v.as_str())
                     .unwrap_or("bookmark");
 
-                let marker_type = MarkerType::parse(marker_type_str).unwrap_or(MarkerType::Bookmark);
+                let marker_type =
+                    MarkerType::parse(marker_type_str).unwrap_or(MarkerType::Bookmark);
 
                 let note = args.get("note").and_then(|v| v.as_str()).map(String::from);
 
@@ -156,7 +157,10 @@ impl Tool for TranscriptMarkerTool {
                     cooldown_key: None,
                 })
             }
-            _ => Err(ToolError::ExecutionFailed(format!("Unknown action: {}", action))),
+            _ => Err(ToolError::ExecutionFailed(format!(
+                "Unknown action: {}",
+                action
+            ))),
         }
     }
 }

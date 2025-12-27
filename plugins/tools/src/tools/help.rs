@@ -45,7 +45,12 @@ impl Tool for HelpTool {
     }
 
     fn example_phrases(&self) -> &'static [&'static str] {
-        &["what can I do", "help", "list commands", "what tools are available"]
+        &[
+            "what can I do",
+            "help",
+            "list commands",
+            "what tools are available",
+        ]
     }
 
     fn modes(&self) -> &'static [Mode] {

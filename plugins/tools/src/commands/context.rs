@@ -22,8 +22,16 @@ impl From<&gibberish_context::ContextState> for ContextDto {
             mode: state.effective_mode(),
             detected_mode: state.detected_mode,
             pinned_mode: state.pinned_mode,
-            active_app: state.system.active_app.as_ref().map(|a| a.bundle_id.clone()),
-            active_app_name: state.system.active_app.as_ref().and_then(|a| a.name.clone()),
+            active_app: state
+                .system
+                .active_app
+                .as_ref()
+                .map(|a| a.bundle_id.clone()),
+            active_app_name: state
+                .system
+                .active_app
+                .as_ref()
+                .and_then(|a| a.name.clone()),
             is_meeting: state.system.has_meeting_app() && state.system.is_mic_active,
             timestamp_ms: state.system.timestamp_ms,
         }
