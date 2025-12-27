@@ -106,6 +106,7 @@ impl ToolRegistry {
     }
 
     /// Build tool policies for the given mode.
+    #[allow(dead_code)]
     pub fn policies_for_mode(&self, mode: Mode) -> HashMap<String, ToolPolicy> {
         self.tools
             .iter()
@@ -186,6 +187,7 @@ impl ToolRegistry {
     ///
     /// Outputs declarations in the FunctionGemma format that our parser expects:
     /// `<start_function_declaration>declaration:TOOL{...}<end_function_declaration>`
+    #[allow(dead_code)]
     pub fn functiongemma_declarations_for_mode(&self, mode: Mode) -> String {
         let manifest_json = self.manifest_json_for_mode(mode);
         match crate::tool_manifest::validate_and_compile(&manifest_json) {
