@@ -6,7 +6,10 @@
 //!
 //! Also provides the `EventBus` trait for decoupled event emission.
 
+mod activity;
 mod bus;
+
+pub use activity::{Activity, ActivityContent, ActivityStatus, ActivityType};
 
 pub use bus::{EmittedEvent, EventBus, EventBusRef, InMemoryEventBus, NullEventBus};
 

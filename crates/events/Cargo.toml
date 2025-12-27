@@ -6,4 +6,6 @@ edition.workspace = true
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
 gibberish-context = { path = "../context" }
