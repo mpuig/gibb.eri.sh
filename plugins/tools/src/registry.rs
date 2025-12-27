@@ -176,7 +176,7 @@ impl ToolRegistry {
     /// Build FunctionGemma instructions for the given mode.
     pub fn functiongemma_instructions_for_mode(&self, mode: Mode) -> String {
         let tools = self.tools_for_mode(mode);
-        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+        let tool_names: Vec<String> = tools.iter().map(|t| t.name().to_string()).collect();
 
         if tool_names.is_empty() {
             return "You are an action router. No tools are available in this mode. Output <end_of_turn> immediately.".to_string();

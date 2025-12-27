@@ -154,14 +154,16 @@ mod macos {
     }
 }
 
+use std::borrow::Cow;
+
 #[async_trait]
 impl Tool for AddTodoTool {
-    fn name(&self) -> &'static str {
-        "add_todo"
+    fn name(&self) -> Cow<'static, str> {
+        "add_todo".into()
     }
 
-    fn description(&self) -> &'static str {
-        "Add reminders and action items to Apple Reminders"
+    fn description(&self) -> Cow<'static, str> {
+        "Add reminders and action items to Apple Reminders".into()
     }
 
     fn example_phrases(&self) -> &'static [&'static str] {
@@ -180,8 +182,8 @@ impl Tool for AddTodoTool {
     }
 
     // Available in Meeting mode (for capturing action items)
-    fn modes(&self) -> &'static [Mode] {
-        &[Mode::Meeting]
+    fn modes(&self) -> Cow<'static, [Mode]> {
+        Cow::Borrowed(&[Mode::Meeting])
     }
 
     fn is_read_only(&self) -> bool {
@@ -248,7 +250,7 @@ impl Tool for AddTodoTool {
                 let message = macos::add_reminder(title, notes, list, priority).await?;
 
                 Ok(ToolResult {
-                    event_name: "tools:add_todo",
+                    event_name: Cow::Borrowed("tools:add_todo"),
                     payload: serde_json::json!({
                         "action": "add",
                         "title": title,
@@ -263,7 +265,7 @@ impl Tool for AddTodoTool {
                 let lists = macos::list_reminder_lists().await?;
 
                 Ok(ToolResult {
-                    event_name: "tools:add_todo",
+                    event_name: Cow::Borrowed("tools:add_todo"),
                     payload: serde_json::json!({
                         "action": "list_lists",
                         "lists": lists,

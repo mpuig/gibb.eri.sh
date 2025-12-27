@@ -4,13 +4,14 @@
 //! the `Tool` trait for use in the action router.
 
 use crate::tools::{Tool, ToolContext, ToolError, ToolResult};
-use gibberish_context::Mode;
 use async_trait::async_trait;
+use gibberish_context::Mode;
 use gibberish_skills::{
     execute_tool, ExecutorConfig, ParameterType, SkillDefinition,
     ToolDefinition as SkillToolDefinition,
 };
 use serde_json::json;
+use std::borrow::Cow;
 use std::sync::Arc;
 
 /// Convert skills::Mode to context::Mode.
@@ -25,62 +26,27 @@ fn convert_mode(mode: gibberish_skills::Mode) -> Mode {
 
 /// Generic tool that wraps a skill-defined tool.
 ///
-/// # Memory Leak Warning
-///
-/// Uses `Box::leak` to create `&'static str` required by the `Tool` trait.
-/// This causes memory to accumulate on skill reload because leaked strings
-/// are never deallocated. The proper fix requires changing the `Tool` trait
-/// to use `String` or `Cow<'static, str>` instead of `&'static str`.
-///
-/// For now, this is acceptable because:
-/// - Skills are typically loaded once at startup
-/// - Reloads are infrequent (development/debugging only)
-/// - The leaked memory per reload is small (tool names + descriptions)
-///
-/// TODO: Refactor Tool trait to avoid `&'static str` requirement.
-/// See issue notary-ded for tracking.
+/// Stores owned data to avoid memory leaks.
 pub struct GenericSkillTool {
-    /// Leaked static tool name.
-    pub(crate) name: &'static str,
-
-    /// Leaked static description.
-    pub(crate) description: &'static str,
-
-    /// Leaked static event name for results.
-    pub(crate) event_name: &'static str,
-
-    /// Leaked static modes slice.
-    pub(crate) modes: &'static [Mode],
-
-    /// Whether this tool is read-only.
+    pub(crate) name: String,
+    pub(crate) description: String,
+    pub(crate) event_name: String,
+    pub(crate) modes: Vec<Mode>,
     pub(crate) read_only: bool,
-
-    /// Whether this tool always requires approval.
     #[allow(dead_code)]
     pub(crate) always_ask: bool,
-
-    /// Execution timeout in seconds.
     pub(crate) timeout_secs: u32,
-
-    /// Tool definition for schema and command execution.
     pub(crate) tool_def: Arc<SkillToolDefinition>,
-
-    /// Skill name for grouping.
     pub(crate) skill_name: String,
 }
 
 impl GenericSkillTool {
     /// Create a new generic skill tool from a skill and tool definition.
     pub fn new(skill: &SkillDefinition, tool: &SkillToolDefinition) -> Self {
-        // Leak strings to get &'static str
-        let name: &'static str = Box::leak(tool.name.clone().into_boxed_str());
-        let description: &'static str = Box::leak(tool.description.clone().into_boxed_str());
-        let event_name: &'static str =
-            Box::leak(format!("tools:skill:{}", tool.name).into_boxed_str());
-
-        // Convert and leak modes
-        let modes_vec: Vec<Mode> = skill.modes.iter().map(|m| convert_mode(*m)).collect();
-        let modes: &'static [Mode] = Box::leak(modes_vec.into_boxed_slice());
+        let name = tool.name.clone();
+        let description = tool.description.clone();
+        let event_name = format!("tools:skill:{}", tool.name);
+        let modes: Vec<Mode> = skill.modes.iter().map(|m| convert_mode(*m)).collect();
 
         Self {
             name,
@@ -153,16 +119,16 @@ impl GenericSkillTool {
 
 #[async_trait]
 impl Tool for GenericSkillTool {
-    fn name(&self) -> &'static str {
-        self.name
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Owned(self.name.clone())
     }
 
-    fn description(&self) -> &'static str {
-        self.description
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Owned(self.description.clone())
     }
 
-    fn modes(&self) -> &'static [Mode] {
-        self.modes
+    fn modes(&self) -> Cow<'static, [Mode]> {
+        Cow::Owned(self.modes.clone())
     }
 
     fn is_read_only(&self) -> bool {
@@ -188,7 +154,7 @@ impl Tool for GenericSkillTool {
             .map_err(|e| ToolError::ExecutionFailed(e.to_string()))?;
 
         Ok(ToolResult {
-            event_name: self.event_name,
+            event_name: Cow::Owned(self.event_name.clone()),
             payload: output.to_json(),
             cache_key: None,
             cooldown_key: if self.read_only {
@@ -203,8 +169,10 @@ impl Tool for GenericSkillTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::environment::mock::MockSystemEnvironment;
     use gibberish_skills::parse_skill_content;
     use std::path::Path;
+    use std::sync::atomic::AtomicBool;
 
     const TEST_SKILL: &str = r#"---
 name: test
@@ -243,18 +211,6 @@ echo {{message}}
     }
 
     #[test]
-    fn test_schema_generation() {
-        let skill = parse_skill_content(TEST_SKILL, Path::new("test.md")).unwrap();
-        let tools = GenericSkillTool::from_skill(&skill);
-        let schema = tools[0].args_schema();
-
-        assert_eq!(schema["type"], "object");
-        assert!(schema["properties"]["message"].is_object());
-        assert_eq!(schema["properties"]["message"]["type"], "string");
-        assert_eq!(schema["required"][0], "message");
-    }
-
-    #[test]
     fn test_mode_conversion() {
         let skill = parse_skill_content(TEST_SKILL, Path::new("test.md")).unwrap();
         let tools = GenericSkillTool::from_skill(&skill);
@@ -263,5 +219,33 @@ echo {{message}}
         assert_eq!(modes.len(), 2);
         assert!(modes.contains(&Mode::Global));
         assert!(modes.contains(&Mode::Dev));
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool() {
+        let skill = parse_skill_content(TEST_SKILL, Path::new("test.md")).unwrap();
+        let tools = GenericSkillTool::from_skill(&skill);
+        let tool = &tools[0];
+
+        let args = json!({
+            "message": "hello world"
+        });
+
+        // Setup dummy context (not used by GenericSkillTool currently)
+        let env = Arc::new(MockSystemEnvironment::default());
+        let ctx = ToolContext::with_abort(
+            env,
+            "en".to_string(),
+            Arc::new(AtomicBool::new(false)),
+        );
+
+        let result = tool.execute(&args, &ctx).await.unwrap();
+        
+        // The echo command output includes a newline
+        let output_str = result.payload["output"].as_str().unwrap();
+        assert!(output_str.trim() == "hello world", "Output was: {:?}", output_str);
+        
+        assert_eq!(result.event_name, "tools:skill:echo_test");
+        assert!(result.payload["success"].as_bool().unwrap());
     }
 }

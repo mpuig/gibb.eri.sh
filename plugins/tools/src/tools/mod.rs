@@ -3,6 +3,8 @@
 //! Tools are adapters that execute specific actions (e.g., Wikipedia lookups).
 //! Each tool implements the `Tool` trait and is registered in the `ToolRegistry`.
 
+use std::borrow::Cow;
+
 mod add_todo;
 mod app_launcher;
 mod file_finder;
@@ -91,7 +93,8 @@ impl ToolContext {
 #[derive(Debug)]
 pub struct ToolResult {
     /// Event name to emit (e.g., "tools:wikipedia_city").
-    pub event_name: &'static str,
+    /// Uses Cow to allow both static strings (built-in tools) and owned strings (skill tools).
+    pub event_name: Cow<'static, str>,
     /// Ready-to-emit payload (tool formats this, not the executor).
     pub payload: serde_json::Value,
     /// Optional cache key. If set, the executor will cache this result.
@@ -138,14 +141,16 @@ impl From<gibberish_input::InputError> for ToolError {
 /// Trait for executable tools.
 ///
 /// Uses async_trait to make the trait dyn-compatible.
+/// Returns Cow<'static, str> to allow both static strings (built-in tools)
+/// and owned strings (skill tools) without memory leaks.
 #[async_trait]
 pub trait Tool: Send + Sync {
     /// Tool name (matches the manifest name).
-    fn name(&self) -> &'static str;
+    fn name(&self) -> Cow<'static, str>;
 
     /// Human-readable description of what the tool does.
-    fn description(&self) -> &'static str {
-        ""
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed("")
     }
 
     /// Example voice phrases that trigger this tool (human-readable).
@@ -162,9 +167,9 @@ pub trait Tool: Send + Sync {
     /// Modes in which this tool is available.
     /// Return empty slice for tools that are always available (Global mode).
     /// Return specific modes for context-filtered tools.
-    fn modes(&self) -> &'static [Mode] {
+    fn modes(&self) -> Cow<'static, [Mode]> {
         // Default: available in all modes (Global)
-        &[]
+        Cow::Borrowed(&[])
     }
 
     /// Check if this tool is available in the given mode.

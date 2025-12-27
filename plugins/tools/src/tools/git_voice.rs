@@ -130,14 +130,16 @@ impl GitCommand {
     }
 }
 
+use std::borrow::Cow;
+
 #[async_trait]
 impl Tool for GitVoiceTool {
-    fn name(&self) -> &'static str {
-        "git_voice"
+    fn name(&self) -> Cow<'static, str> {
+        "git_voice".into()
     }
 
-    fn description(&self) -> &'static str {
-        "Execute git commands via voice"
+    fn description(&self) -> Cow<'static, str> {
+        "Execute git commands via voice".into()
     }
 
     fn example_phrases(&self) -> &'static [&'static str] {
@@ -159,8 +161,8 @@ impl Tool for GitVoiceTool {
     }
 
     // Only available in Dev mode
-    fn modes(&self) -> &'static [Mode] {
-        &[Mode::Dev]
+    fn modes(&self) -> Cow<'static, [Mode]> {
+        Cow::Borrowed(&[Mode::Dev])
     }
 
     fn is_read_only(&self) -> bool {
@@ -266,7 +268,7 @@ impl Tool for GitVoiceTool {
         };
 
         Ok(ToolResult {
-            event_name: "tools:git_voice",
+            event_name: Cow::Borrowed("tools:git_voice"),
             payload: json!({
                 "action": action,
                 "command": format!("git {}", git_args.join(" ")),

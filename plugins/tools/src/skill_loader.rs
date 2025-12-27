@@ -276,12 +276,11 @@ pub struct ReloadResult {
 // GenericSkillTool needs Clone for the manager
 impl Clone for GenericSkillTool {
     fn clone(&self) -> Self {
-        // Since we use leaked static strings, we can just copy the references
         Self {
-            name: self.name,
-            description: self.description,
-            event_name: self.event_name,
-            modes: self.modes,
+            name: self.name.clone(),
+            description: self.description.clone(),
+            event_name: self.event_name.clone(),
+            modes: self.modes.clone(),
             read_only: self.read_only,
             always_ask: self.always_ask,
             timeout_secs: self.timeout_secs,

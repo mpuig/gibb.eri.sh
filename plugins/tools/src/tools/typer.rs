@@ -8,6 +8,7 @@ use crate::adapters::PlatformFocusChecker;
 use async_trait::async_trait;
 use gibberish_input::{FocusChecker, InputController, TypeOptions};
 use serde_json::json;
+use std::borrow::Cow;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -16,12 +17,12 @@ pub struct TyperTool;
 
 #[async_trait]
 impl Tool for TyperTool {
-    fn name(&self) -> &'static str {
-        "typer"
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("typer")
     }
 
-    fn description(&self) -> &'static str {
-        "Type text using keyboard simulation"
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Type text using keyboard simulation")
     }
 
     fn example_phrases(&self) -> &'static [&'static str] {
@@ -92,7 +93,7 @@ impl Tool for TyperTool {
             .map_err(|e| ToolError::ExecutionFailed(format!("Task join error: {}", e)))??;
 
         Ok(ToolResult {
-            event_name: "tools:typer_result",
+            event_name: Cow::Borrowed("tools:typer_result"),
             payload: json!({
                 "text": result.text,
                 "chars_typed": result.chars_typed,

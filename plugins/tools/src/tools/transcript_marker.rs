@@ -5,6 +5,7 @@
 use super::{Mode, Tool, ToolContext, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
+use std::borrow::Cow;
 
 /// Tool for marking moments in meeting transcripts.
 pub struct TranscriptMarkerTool;
@@ -56,33 +57,33 @@ pub struct Marker {
 
 #[async_trait]
 impl Tool for TranscriptMarkerTool {
-    fn name(&self) -> &'static str {
-        "transcript_marker"
+    fn name(&self) -> Cow<'static, str> {
+        "transcript_marker".into()
     }
 
-    fn description(&self) -> &'static str {
-        "Mark important moments in meeting transcripts"
+    fn description(&self) -> Cow<'static, str> {
+        "Insert markers or flags into the live transcript".into()
     }
 
     fn example_phrases(&self) -> &'static [&'static str] {
         &[
-            "mark this as important",
-            "flag as action item",
-            "bookmark this",
-            "mark decision",
-            "highlight this moment",
+            "flag this",
+            "mark as important",
+            "add a note",
+            "bookmark this moment",
         ]
     }
 
     fn few_shot_examples(&self) -> &'static [&'static str] {
         &[
-            "User: mark this as important\n<start_function_call>call:transcript_marker{action:<escape>mark<escape>,type:<escape>important<escape>}<end_function_call>",
+            "User: flag this moment\n<start_function_call>call:transcript_marker{type:<escape>flag<escape>}<end_function_call>",
+            "User: add note check this later\n<start_function_call>call:transcript_marker{type:<escape>note<escape>,content:<escape>check this later<escape>}<end_function_call>",
         ]
     }
 
     // Available in Meeting mode
-    fn modes(&self) -> &'static [Mode] {
-        &[Mode::Meeting]
+    fn modes(&self) -> Cow<'static, [Mode]> {
+        Cow::Borrowed(&[Mode::Meeting])
     }
 
     fn is_read_only(&self) -> bool {
@@ -147,7 +148,7 @@ impl Tool for TranscriptMarkerTool {
 
                 // The frontend will handle storing and displaying markers
                 Ok(ToolResult {
-                    event_name: "tools:transcript_marker",
+                    event_name: Cow::Borrowed("tools:transcript_marker"),
                     payload: serde_json::json!({
                         "action": "mark",
                         "marker": marker,

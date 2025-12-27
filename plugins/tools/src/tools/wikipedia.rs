@@ -3,6 +3,7 @@
 use super::{Tool, ToolContext, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
+use std::borrow::Cow;
 
 const DEFAULT_SENTENCES: u8 = 2;
 
@@ -11,12 +12,12 @@ pub struct WikipediaTool;
 
 #[async_trait]
 impl Tool for WikipediaTool {
-    fn name(&self) -> &'static str {
-        "wikipedia_city_lookup"
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("wikipedia_city_lookup")
     }
 
-    fn description(&self) -> &'static str {
-        "Look up city information from Wikipedia"
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Look up city information from Wikipedia")
     }
 
     fn example_phrases(&self) -> &'static [&'static str] {
@@ -92,7 +93,7 @@ impl Tool for WikipediaTool {
 
         // Return ready-to-emit payload (frontend expects { city, result })
         Ok(ToolResult {
-            event_name: "tools:wikipedia_city",
+            event_name: Cow::Borrowed("tools:wikipedia_city"),
             payload: serde_json::json!({
                 "city": summary.title,
                 "result": summary,

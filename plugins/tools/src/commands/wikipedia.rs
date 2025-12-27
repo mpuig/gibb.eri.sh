@@ -51,7 +51,7 @@ pub async fn wikipedia_city_lookup(
                     "city": fetched.title,
                     "result": fetched,
                 }),
-                event_name: "tools:wikipedia_city",
+                event_name: std::borrow::Cow::Borrowed("tools:wikipedia_city"),
             },
         );
     }

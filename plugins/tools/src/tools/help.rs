@@ -6,6 +6,7 @@
 use super::{Mode, Tool, ToolContext, ToolError, ToolResult};
 use async_trait::async_trait;
 use std::sync::Arc;
+use std::borrow::Cow;
 
 /// Tool info for help output.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -36,12 +37,12 @@ impl HelpTool {
 
 #[async_trait]
 impl Tool for HelpTool {
-    fn name(&self) -> &'static str {
-        "help"
+    fn name(&self) -> Cow<'static, str> {
+        "help".into()
     }
 
-    fn description(&self) -> &'static str {
-        "List available voice commands for current mode"
+    fn description(&self) -> Cow<'static, str> {
+        "List available voice commands for current mode".into()
     }
 
     fn example_phrases(&self) -> &'static [&'static str] {
@@ -53,8 +54,8 @@ impl Tool for HelpTool {
         ]
     }
 
-    fn modes(&self) -> &'static [Mode] {
-        &[]
+    fn modes(&self) -> Cow<'static, [Mode]> {
+        Cow::Borrowed(&[])
     }
 
     async fn execute(
@@ -77,7 +78,7 @@ impl Tool for HelpTool {
         let tools = self.provider.get_tools_for_mode(mode);
 
         Ok(ToolResult {
-            event_name: "tools:help",
+            event_name: Cow::Borrowed("tools:help"),
             payload: serde_json::json!({
                 "mode": mode.to_string(),
                 "tools": tools,

@@ -6,6 +6,7 @@
 use super::{Tool, ToolContext, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
+use std::borrow::Cow;
 
 const DEFAULT_SENTENCES: u8 = 3;
 
@@ -14,12 +15,12 @@ pub struct WebSearchTool;
 
 #[async_trait]
 impl Tool for WebSearchTool {
-    fn name(&self) -> &'static str {
-        "web_search"
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("web_search")
     }
 
-    fn description(&self) -> &'static str {
-        "Search the web for information on any topic"
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Search the web for information on any topic")
     }
 
     fn example_phrases(&self) -> &'static [&'static str] {
@@ -109,7 +110,7 @@ impl Tool for WebSearchTool {
                 let cache_key = format!("wikipedia:{}:{}", lang, query.to_lowercase());
 
                 Ok(ToolResult {
-                    event_name: "tools:search_result",
+                    event_name: Cow::Borrowed("tools:search_result"),
                     payload: json!({
                         "query": query,
                         "source": "wikipedia",

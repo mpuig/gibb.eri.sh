@@ -117,14 +117,16 @@ mod macos {
     }
 }
 
+use std::borrow::Cow;
+
 #[async_trait]
 impl Tool for AppLauncherTool {
-    fn name(&self) -> &'static str {
-        "app_launcher"
+    fn name(&self) -> Cow<'static, str> {
+        "app_launcher".into()
     }
 
-    fn description(&self) -> &'static str {
-        "Open applications or switch to running apps"
+    fn description(&self) -> Cow<'static, str> {
+        "Open applications or switch to running apps".into()
     }
 
     fn example_phrases(&self) -> &'static [&'static str] {
@@ -144,8 +146,8 @@ impl Tool for AppLauncherTool {
     }
 
     // Available in all modes (Global)
-    fn modes(&self) -> &'static [gibberish_context::Mode] {
-        &[]
+    fn modes(&self) -> Cow<'static, [gibberish_context::Mode]> {
+        Cow::Borrowed(&[])
     }
 
     fn is_read_only(&self) -> bool {
@@ -191,7 +193,7 @@ impl Tool for AppLauncherTool {
                 let message = macos::open_app(app_name).await?;
 
                 Ok(ToolResult {
-                    event_name: "tools:app_launcher",
+                    event_name: Cow::Borrowed("tools:app_launcher"),
                     payload: serde_json::json!({
                         "action": action,
                         "app": app_name,
@@ -206,7 +208,7 @@ impl Tool for AppLauncherTool {
                 let apps = macos::list_running_apps().await?;
 
                 Ok(ToolResult {
-                    event_name: "tools:app_launcher",
+                    event_name: Cow::Borrowed("tools:app_launcher"),
                     payload: serde_json::json!({
                         "action": "list",
                         "apps": apps,

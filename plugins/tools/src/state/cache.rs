@@ -1,5 +1,6 @@
 //! Generic tool result cache.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -8,7 +9,7 @@ use std::time::Instant;
 pub struct CacheEntry {
     pub fetched_at: Instant,
     pub payload: serde_json::Value,
-    pub event_name: &'static str,
+    pub event_name: Cow<'static, str>,
 }
 
 /// Generic cache for tool results.

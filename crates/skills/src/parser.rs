@@ -28,7 +28,7 @@ pub fn parse_skill_content(content: &str, path: &Path) -> SkillResult<SkillDefin
 
     // Parse frontmatter into SkillDefinition
     let mut skill: SkillDefinition =
-        serde_yaml::from_str(&frontmatter).map_err(|e| SkillError::InvalidFrontmatter {
+        serde_yml::from_str(&frontmatter).map_err(|e| SkillError::InvalidFrontmatter {
             path: path.to_path_buf(),
             message: e.to_string(),
         })?;

@@ -5,6 +5,7 @@
 use super::{Tool, ToolContext, ToolError, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
+use std::borrow::Cow;
 
 /// Tool for controlling system settings.
 pub struct SystemControlTool;
@@ -138,12 +139,12 @@ mod macos {
 
 #[async_trait]
 impl Tool for SystemControlTool {
-    fn name(&self) -> &'static str {
-        "system_control"
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("system_control")
     }
 
-    fn description(&self) -> &'static str {
-        "Control system settings like volume, mute, sleep, and Do Not Disturb"
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Control system settings like volume, mute, sleep, and Do Not Disturb")
     }
 
     fn example_phrases(&self) -> &'static [&'static str] {
@@ -164,8 +165,8 @@ impl Tool for SystemControlTool {
     }
 
     // Available in all modes (Global)
-    fn modes(&self) -> &'static [gibberish_context::Mode] {
-        &[]
+    fn modes(&self) -> Cow<'static, [gibberish_context::Mode]> {
+        Cow::Borrowed(&[])
     }
 
     fn is_read_only(&self) -> bool {
@@ -210,7 +211,7 @@ impl Tool for SystemControlTool {
         let message = macos::execute_action(action).await?;
 
         Ok(ToolResult {
-            event_name: "tools:system_control",
+            event_name: Cow::Borrowed("tools:system_control"),
             payload: serde_json::json!({
                 "action": action_str,
                 "success": true,

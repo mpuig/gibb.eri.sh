@@ -142,14 +142,16 @@ mod macos {
     }
 }
 
+use std::borrow::Cow;
+
 #[async_trait]
 impl Tool for FileFinderTool {
-    fn name(&self) -> &'static str {
-        "file_finder"
+    fn name(&self) -> Cow<'static, str> {
+        "file_finder".into()
     }
 
-    fn description(&self) -> &'static str {
-        "Find and open files using Spotlight search"
+    fn description(&self) -> Cow<'static, str> {
+        "Find and open files using Spotlight search".into()
     }
 
     fn example_phrases(&self) -> &'static [&'static str] {
@@ -168,8 +170,8 @@ impl Tool for FileFinderTool {
     }
 
     // Available in Dev mode
-    fn modes(&self) -> &'static [Mode] {
-        &[Mode::Dev]
+    fn modes(&self) -> Cow<'static, [Mode]> {
+        Cow::Borrowed(&[Mode::Dev])
     }
 
     fn is_read_only(&self) -> bool {
@@ -253,7 +255,7 @@ impl Tool for FileFinderTool {
                 let results = macos::find_files(query, scope, limit).await?;
 
                 Ok(ToolResult {
-                    event_name: "tools:file_finder",
+                    event_name: Cow::Borrowed("tools:file_finder"),
                     payload: serde_json::json!({
                         "action": "find",
                         "query": query,
@@ -277,7 +279,7 @@ impl Tool for FileFinderTool {
                 };
 
                 Ok(ToolResult {
-                    event_name: "tools:file_finder",
+                    event_name: Cow::Borrowed("tools:file_finder"),
                     payload: serde_json::json!({
                         "action": "open",
                         "path": path,
@@ -296,7 +298,7 @@ impl Tool for FileFinderTool {
                 let message = macos::reveal_in_finder(path).await?;
 
                 Ok(ToolResult {
-                    event_name: "tools:file_finder",
+                    event_name: Cow::Borrowed("tools:file_finder"),
                     payload: serde_json::json!({
                         "action": "reveal",
                         "path": path,

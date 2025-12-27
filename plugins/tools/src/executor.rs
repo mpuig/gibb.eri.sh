@@ -95,13 +95,13 @@ pub async fn execute_tool(
                 .cache
                 .get(key)
                 .filter(|entry| entry.fetched_at.elapsed() <= CACHE_TTL)
-                .map(|entry| (entry.payload.clone(), entry.event_name))
+                .map(|entry| (entry.payload.clone(), entry.event_name.clone()))
         })
     };
 
     // Return cached result if found
     if let Some((cached_payload, event_name)) = check_result {
-        event_bus.emit(event_name, cached_payload.clone());
+        event_bus.emit(&event_name, cached_payload.clone());
         emit_tool_done(&*event_bus, tool_name, true, &cached_payload);
         return ExecutionOutcome::CacheHit(cached_payload);
     }
@@ -150,7 +150,7 @@ pub async fn execute_tool(
                     CacheEntry {
                         fetched_at: Instant::now(),
                         payload: result.payload.clone(),
-                        event_name: result.event_name,
+                        event_name: result.event_name.clone(),
                     },
                 );
             }
@@ -165,7 +165,7 @@ pub async fn execute_tool(
             }
 
             // Emit the result using tool-provided event name and payload
-            event_bus.emit(result.event_name, result.payload.clone());
+            event_bus.emit(&result.event_name, result.payload.clone());
             emit_tool_done(&*event_bus, tool_name, false, &result.payload);
             ExecutionOutcome::Executed(result.payload)
         }
