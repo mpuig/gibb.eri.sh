@@ -119,6 +119,32 @@ fn build_empty_past_spec(value_type: &ValueType) -> Option<EmptyPastSpec> {
 use crate::prompt_builder;
 
 impl FunctionGemmaRunner {
+    /// Create ONNX session with CoreML acceleration, falling back to CPU if unavailable.
+    fn create_session_with_fallback(model_path: &Path) -> Result<(Session, &'static str), FunctionGemmaError> {
+        // Try CoreML first (GPU acceleration on macOS)
+        let coreml_result = Session::builder()
+            .and_then(|b| b.with_execution_providers([CoreMLExecutionProvider::default().build()]))
+            .and_then(|b| b.with_optimization_level(GraphOptimizationLevel::Level3))
+            .and_then(|b| b.commit_from_file(model_path));
+
+        match coreml_result {
+            Ok(session) => Ok((session, "CoreML")),
+            Err(coreml_err) => {
+                tracing::warn!(error = %coreml_err, "CoreML unavailable, falling back to CPU");
+
+                // Fallback to CPU-only
+                let session = Session::builder()
+                    .map_err(|e| FunctionGemmaError::Model(e.to_string()))?
+                    .with_optimization_level(GraphOptimizationLevel::Level3)
+                    .map_err(|e| FunctionGemmaError::Model(e.to_string()))?
+                    .commit_from_file(model_path)
+                    .map_err(|e| FunctionGemmaError::Model(e.to_string()))?;
+
+                Ok((session, "CPU"))
+            }
+        }
+    }
+
     pub fn load(
         model_path: impl AsRef<Path>,
         tokenizer_path: impl AsRef<Path>,
@@ -127,16 +153,8 @@ impl FunctionGemmaRunner {
             .map_err(|e| FunctionGemmaError::Tokenizer(e.to_string()))?;
 
         // Try CoreML on macOS for GPU acceleration, fallback to CPU
-        let session = Session::builder()
-            .map_err(|e| FunctionGemmaError::Model(e.to_string()))?
-            .with_execution_providers([CoreMLExecutionProvider::default().build()])
-            .map_err(|e| FunctionGemmaError::Model(e.to_string()))?
-            .with_optimization_level(GraphOptimizationLevel::Level3)
-            .map_err(|e| FunctionGemmaError::Model(e.to_string()))?
-            .commit_from_file(model_path.as_ref())
-            .map_err(|e| FunctionGemmaError::Model(e.to_string()))?;
-
-        tracing::info!("FunctionGemma session loaded with CoreML provider");
+        let (session, provider) = Self::create_session_with_fallback(model_path.as_ref())?;
+        tracing::info!(provider = %provider, "FunctionGemma session loaded");
 
         let input_names = session
             .inputs
