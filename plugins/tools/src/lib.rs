@@ -18,6 +18,7 @@ mod parser;
 mod policy;
 mod registry;
 mod router;
+mod router_logic;
 mod state;
 mod tool_manifest;
 mod tools;

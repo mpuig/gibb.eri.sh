@@ -86,28 +86,28 @@ reqwest = { version = "0.12", features = ["json"] }
 # Internal crates
 gibberish-application = { path = "crates/application" }
 gibberish-audio = { path = "crates/audio" }
-gibberish-stt = { path = "crates/stt" }
-gibberish-vad = { path = "crates/vad" }
-gibberish-diarization = { path = "crates/diarization" }
-gibberish-transcript = { path = "crates/transcript" }
-gibberish-models = { path = "crates/models" }
-gibberish-storage = { path = "crates/storage" }
-gibberish-detect = { path = "crates/detect" }
-gibberish-sherpa = { path = "crates/sherpa" }
-gibberish-turn = { path = "crates/turn" }
-gibberish-smart-turn = { path = "crates/smart-turn" }
 gibberish-bus = { path = "crates/bus" }
 gibberish-context = { path = "crates/context" }
+gibberish-detect = { path = "crates/detect" }
+gibberish-diarization = { path = "crates/diarization" }
 gibberish-events = { path = "crates/events" }
 gibberish-input = { path = "crates/input" }
+gibberish-models = { path = "crates/models" }
+gibberish-sherpa = { path = "crates/sherpa" }
+gibberish-smart-turn = { path = "crates/smart-turn" }
+gibberish-storage = { path = "crates/storage" }
+gibberish-stt = { path = "crates/stt" }
+gibberish-transcript = { path = "crates/transcript" }
+gibberish-turn = { path = "crates/turn" }
+gibberish-vad = { path = "crates/vad" }
 
 # Internal plugins
-tauri-plugin-gibberish-tray = { path = "plugins/tray" }
+tauri-plugin-gibberish-detect = { path = "plugins/detect" }
+tauri-plugin-gibberish-permissions = { path = "plugins/permissions" }
 tauri-plugin-gibberish-recorder = { path = "plugins/recorder" }
 tauri-plugin-gibberish-stt = { path = "plugins/stt-worker" }
-tauri-plugin-gibberish-permissions = { path = "plugins/permissions" }
-tauri-plugin-gibberish-detect = { path = "plugins/detect" }
 tauri-plugin-gibberish-tools = { path = "plugins/tools" }
+tauri-plugin-gibberish-tray = { path = "plugins/tray" }
 
 [profile.release]
 lto = true

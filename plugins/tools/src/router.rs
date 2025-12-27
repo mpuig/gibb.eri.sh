@@ -2,13 +2,15 @@
 //!
 //! Receives transcript commits, runs FunctionGemma inference,
 //! and dispatches tool execution via the registry.
+//!
+//! Pure decision logic is in `router_logic` module for testability.
 
 use crate::executor::{execute_tool, ExecutionMode, ExecutionOutcome};
 use crate::policy::DEBOUNCE;
 use crate::registry::ToolRegistry;
+use crate::router_logic::{self, RouterConfig};
 use crate::tool_manifest::ToolPolicy;
 use gibberish_context::platform::{get_clipboard_preview, get_selection_preview};
-use gibberish_context::Mode;
 use gibberish_events::{event_names, EventBus, StreamCommitEvent};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -31,31 +33,6 @@ fn policy_for_tool<'a>(
     tool: &str,
 ) -> Option<&'a ToolPolicy> {
     policies.get(tool)
-}
-
-/// Find the best proposal above confidence threshold.
-fn find_best_proposal<'a>(
-    proposals: &'a [crate::functiongemma::Proposal],
-    policies: &HashMap<String, ToolPolicy>,
-    min_confidence: f32,
-) -> Option<&'a crate::functiongemma::Proposal> {
-    proposals
-        .iter()
-        .filter(|p| p.confidence >= min_confidence)
-        .filter(|p| policies.contains_key(&p.tool))
-        .max_by(|a, b| {
-            a.confidence
-                .partial_cmp(&b.confidence)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
-}
-
-/// Check if a tool is available in the current mode.
-fn is_tool_available_in_mode(registry: &ToolRegistry, tool_name: &str, mode: Mode) -> bool {
-    registry
-        .get(tool_name)
-        .map(|t| t.is_available_in(mode))
-        .unwrap_or(false)
 }
 
 /// Validate tool args and attempt repair via inference if validation fails.
@@ -124,14 +101,6 @@ async fn validate_and_repair_args(
     }
 }
 
-/// Snapshot of router settings for use during processing.
-#[derive(Debug)]
-struct RouterSettingsSnapshot {
-    auto_run_read_only: bool,
-    auto_run_all: bool,
-    current_mode: Mode,
-}
-
 /// Main router processing loop.
 ///
 /// Event-driven debounce: waits for new text notifications, then
@@ -166,16 +135,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         }
 
         // Extract state snapshot under lock
-        let (
-            pending_text,
-            runner,
-            enabled,
-            router_settings,
-            developer_context,
-            tool_policies,
-            min_confidence,
-            infer_cancel,
-        ) = {
+        let (pending_text, runner, enabled, router_settings, developer_context, tool_policies, infer_cancel) = {
             let mut guard = state.lock().await;
 
             let pending_text = guard.router.pending_text.trim().to_string();
@@ -191,14 +151,14 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                 pending_text,
                 runner,
                 guard.router.enabled,
-                RouterSettingsSnapshot {
+                RouterConfig {
                     auto_run_read_only: guard.router.auto_run_read_only,
                     auto_run_all: guard.router.auto_run_all,
                     current_mode: guard.context.effective_mode(),
+                    min_confidence: guard.router.min_confidence,
                 },
                 guard.router.functiongemma_developer_context.clone(),
                 guard.router.tool_policies.clone(),
-                guard.router.min_confidence,
                 guard.router.infer_cancel.clone(),
             )
         };
@@ -294,7 +254,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
 
         // Find the best proposal above confidence threshold
         let Some(proposal) =
-            find_best_proposal(&model_out.proposals, &tool_policies, min_confidence)
+            router_logic::find_best_proposal(&model_out.proposals, &tool_policies, router_settings.min_confidence)
         else {
             // No valid tool call found - emit feedback
             emit_router_status(
@@ -337,30 +297,31 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             continue;
         };
 
-        // Build registry and check mode availability
+        // Build registry for tool execution
         let registry = ToolRegistry::from_policies(&tool_policies);
 
         // Guard: skip if tool not available in current mode
-        if !is_tool_available_in_mode(&registry, &proposal.tool, router_settings.current_mode) {
-            tracing::debug!(
-                tool = %proposal.tool,
-                mode = %router_settings.current_mode,
-                "Tool not available in current mode, skipping"
-            );
-            emit_router_status(
-                &*event_bus,
-                "tool_mode_filtered",
-                serde_json::json!({
-                    "tool": proposal.tool,
-                    "mode": router_settings.current_mode.to_string()
-                }),
-            );
-            continue;
+        if let Some(tool) = registry.get(&proposal.tool) {
+            if !tool.is_available_in(router_settings.current_mode) {
+                tracing::debug!(
+                    tool = %proposal.tool,
+                    mode = %router_settings.current_mode,
+                    "Tool not available in current mode, skipping"
+                );
+                emit_router_status(
+                    &*event_bus,
+                    "tool_mode_filtered",
+                    serde_json::json!({
+                        "tool": proposal.tool,
+                        "mode": router_settings.current_mode.to_string()
+                    }),
+                );
+                continue;
+            }
         }
 
-        let execution_mode = if router_settings.auto_run_all
-            || (policy.read_only && router_settings.auto_run_read_only)
-        {
+        // Determine execution mode using pure logic
+        let execution_mode = if router_logic::determine_execution_mode(policy, &router_settings) {
             ExecutionMode::AutoRun
         } else {
             ExecutionMode::RequireApproval
@@ -463,7 +424,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                     );
 
                     if let Some(next) =
-                        find_best_proposal(&followup_out.proposals, &tool_policies, min_confidence)
+                        router_logic::find_best_proposal(&followup_out.proposals, &tool_policies, router_settings.min_confidence)
                     {
                         if let Some(next_policy) = policy_for_tool(&tool_policies, &next.tool) {
                             // Validate and repair args (same logic as primary flow)
@@ -480,9 +441,7 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                             .await;
 
                             if let Some(next_args) = validated_args {
-                                let next_execution_mode = if router_settings.auto_run_all
-                                    || (next_policy.read_only && router_settings.auto_run_read_only)
-                                {
+                                let next_execution_mode = if router_logic::determine_execution_mode(next_policy, &router_settings) {
                                     ExecutionMode::AutoRun
                                 } else {
                                     ExecutionMode::RequireApproval
