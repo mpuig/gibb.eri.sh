@@ -42,12 +42,13 @@ function App() {
     }
   }, [currentModel, isListening, isRecording]);
 
-  const { lastCityResult, lastCityError, lastNoMatch } = useActionRouterStore();
+  const { events, lastCityResult, lastCityError, lastNoMatch } = useActionRouterStore();
   const [showSettings, setShowSettings] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const hasActionResult = lastCityResult !== null || lastCityError !== null || lastNoMatch !== null;
+  const hasRouterActivity = events.length > 0 || hasActionResult;
 
   if (!hasCompletedOnboarding) {
     return <Onboarding />;
@@ -95,7 +96,7 @@ function App() {
         </div>
       </header>
 
-      {/* Main Content - Transcript */}
+      {/* Main Content */}
       <main className="flex-1 overflow-auto p-6">
         {!currentModel ? (
           <div className="empty-state h-full">
@@ -117,18 +118,36 @@ function App() {
               Open Settings
             </button>
           </div>
-        ) : segments.length === 0 && !isRecording ? (
+        ) : isRecording || segments.length > 0 ? (
+          // Recording mode: show transcript
+          <>
+            <TranscriptView segments={segments} />
+            {hasActionResult && (
+              <div className="mt-4">
+                <ActionRouterPanel />
+              </div>
+            )}
+          </>
+        ) : isListening && hasRouterActivity ? (
+          // Listen mode with activity: show action panel as main content
+          <ActionRouterPanel />
+        ) : isListening ? (
+          // Listen mode, waiting for voice: show minimal indicator
+          <div className="empty-state h-full">
+            <p className="text-sm" style={{ color: "var(--color-text-quaternary)" }}>
+              Say a voice command...
+            </p>
+          </div>
+        ) : (
+          // Not listening, no recording: prompt to record
           <div className="empty-state h-full">
             <div
-              className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 ${isListening ? "animate-pulse" : ""}`}
-              style={{
-                background: isListening ? "rgba(34, 197, 94, 0.15)" : "var(--color-bg-secondary)",
-                transition: "background 0.3s ease"
-              }}
+              className="w-20 h-20 rounded-full flex items-center justify-center mb-6"
+              style={{ background: "var(--color-bg-secondary)" }}
             >
               <svg
                 className="w-10 h-10"
-                style={{ color: isListening ? "rgb(34, 197, 94)" : "var(--color-text-quaternary)" }}
+                style={{ color: "var(--color-text-quaternary)" }}
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -137,25 +156,9 @@ function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
               </svg>
             </div>
-            <p style={{ color: isListening ? "rgb(34, 197, 94)" : "var(--color-text-tertiary)" }}>
-              {isListening
-                ? "Listening for voice commands..."
-                : "Press record to start transcribing"}
+            <p style={{ color: "var(--color-text-tertiary)" }}>
+              Press record to start transcribing
             </p>
-            {isListening && (
-              <p className="text-xs mt-2" style={{ color: "var(--color-text-quaternary)" }}>
-                Try saying "tell me about Barcelona"
-              </p>
-            )}
-          </div>
-        ) : (
-          <TranscriptView segments={segments} />
-        )}
-
-        {/* Action Results */}
-        {hasActionResult && (
-          <div className="mt-4">
-            <ActionRouterPanel />
           </div>
         )}
       </main>
