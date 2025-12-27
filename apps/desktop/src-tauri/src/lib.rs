@@ -13,9 +13,15 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info,gibberish=debug")),
+                .unwrap_or_else(|_| EnvFilter::new("info,gibberish=debug,ort=error")),
         )
         .init();
+
+    // Suppress verbose ONNX Runtime logging (must be called before any ORT sessions are created)
+    let _ = ort::init().commit();
+    if let Ok(env) = ort::environment::get_environment() {
+        env.set_log_level(ort::logging::LogLevel::Warning);
+    }
 
     tracing::info!("Starting gibberish desktop app");
 

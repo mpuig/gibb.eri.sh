@@ -17,6 +17,7 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
+ort.workspace = true
 gibberish-audio.workspace = true
 gibberish-stt.workspace = true
 gibberish-vad.workspace = true
