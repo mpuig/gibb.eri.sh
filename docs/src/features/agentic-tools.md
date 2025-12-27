@@ -148,7 +148,10 @@ User: "What is quantum computing?"
 - **System Control**: Volume, Mute, Media keys.
 - **App Launcher**: Opens applications.
 - **Web Search**: Knowledge lookups (Wikipedia by default, extensible to other sources).
-- **The Typer**: Voice-controlled typing. "Type a hello world function" -> simulates keystrokes.
+- **The Typer**: Voice-controlled typing.
+    - **Smart Injection**: Types short phrases char-by-char for natural interaction.
+    - **Transparent Paste**: For long text blocks, it saves your current clipboard, pastes the content instantly via `Cmd+V`, and restores your original clipboard after a short delay.
+    - **Context Awareness**: "Paste *this* here" knows to use the active selection as the source.
 
 ### Meeting
 - **Transcript Marker**: Inserts `[FLAG]` or `[TODO]` tags into the transcript file.

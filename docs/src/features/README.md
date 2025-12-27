@@ -23,7 +23,7 @@ Standard voice detection only hears silence. gibb.eri.sh hears *completion*.
 
 A local LLM understands your intent and executes actions.
 
-- "Search Wikipedia for Rust" → Opens browser with results
+- "What is the weather in Barcelona" → Opens browser with results
 - Runs entirely offline
 - Extensible tool system
 
@@ -34,6 +34,14 @@ The system knows what you are doing.
 - **Dev Mode**: Coding in VS Code? Git tools are enabled.
 - **Meeting Mode**: In a Zoom call? Transcription tools are enabled.
 - **Implicit Context**: "Summarize *this*" works on your current selection.
+
+## The Interface
+
+### Unified Activity Feed
+All system events—transcripts, voice commands, and tool results—flow into a single linear feed. This provides a clear "log" of your interaction with the OS.
+
+### Mode Badge
+A visual indicator in the header shows your current mode (Dev, Meeting, Global). You can click the badge to "pin" a specific mode, overriding automatic detection.
 
 ## Feature Matrix
 

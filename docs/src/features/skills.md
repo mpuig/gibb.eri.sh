@@ -6,7 +6,7 @@ The "Hands" of the Voice OS are extensible. We use the [Agent Skills](https://gi
 
 ## How it works
 
-1.  **Drop a file:** Put a `SKILL.md` file in `~/Library/Application Support/sh.eri.gibb/skills/`.
+1.  **Drop a file:** Put a `SKILL.md` file in `~/Library/Application Support/gibb.eri.sh/skills/`.
 2.  **Define the tool:** Describe what it does and the command to run.
 3.  **Speak:** The LLM sees your new tool and uses it when relevant.
 

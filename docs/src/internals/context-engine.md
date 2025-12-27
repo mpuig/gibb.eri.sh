@@ -4,90 +4,40 @@ gibb.eri.sh knows what you're doing. Here's how.
 
 ## The Goal
 
-To enable **Context-Aware AI**, we need to know the user's state.
+To enable **Context-Aware AI**, we need to know the user's state without burning the CPU.
 - Are they coding? (Enable Git tools)
 - Are they in a meeting? (Enable Transcription tools)
-- Are they just browsing? (Enable App Launcher)
+- Are they looking at a specific URL? (Provide deep context)
 
 ## The Implementation
 
-We use a polling loop in `crates/context` that queries the OS every 1-2 seconds.
+We use a high-frequency polling loop in `crates/context` that build a realtime snapshot of the OS state.
 
-### 1. Active App Detection (The Focus)
+### 1. Active App Detection (Native Cocoa)
 
-We need to know which application window is currently focused.
+We use the macOS **Cocoa API** (`NSWorkspace`) via the `objc` crate to detect the focused application.
 
-#### macOS Strategy
-We use **AppleScript** (via `osascript`) to query System Events.
+**Why Native instead of AppleScript?**
+- **Performance:** Sub-millisecond execution. No subprocess fork/exec overhead.
+- **Efficiency:** Negligible CPU usage even at 1s polling intervals.
+- **Reliability:** Directly queries the Window Server for the `frontmostApplication`.
 
-```applescript
-tell application "System Events"
-    set frontApp to first application process whose frontmost is true
-    return bundle identifier of frontApp
-end tell
-```
+### 2. Browser Deep Context (URL Detection)
 
-**Why AppleScript?**
-- It's built-in (no extra binaries).
-- It's permission-friendly (doesn't require Screen Recording permission, just Accessibility).
-- It's fast enough (~50ms) for a 1s polling interval.
+When a supported browser (Chrome, Safari, Arc, Brave) is focused, we go deeper.
 
-**Rust Wrapper:**
-```rust
-// crates/context/src/platform/macos.rs
-fn get_frontmost_app() -> Option<AppInfo> {
-    let output = Command::new("osascript").args(["-e", SCRIPT]).output()?;
-    // ... parse "com.microsoft.VSCode|Code"
-}
-```
+- **Mechanism:** We use a targeted AppleScript call to fetch the `URL` of the active tab.
+- **Optimization:** We only trigger the AppleScript if the active application is a browser, preventing unnecessary overhead.
+- **Value:** This allows "Summarize this page" to work by feeding the URL directly to our extraction tools.
 
-### 2. Meeting Detection (The Activity)
+### 3. Meeting Detection (The Activity)
 
-We need to know if the user is in a call.
-
-**Mechanism:** We monitor CoreAudio to see if known meeting apps (Zoom, Teams) are accessing the microphone.
+We monitor CoreAudio to see if known meeting apps (Zoom, Teams) are accessing the microphone.
 - **Crate:** `crates/detect` (wrapped by `context`)
 - **Logic:** `is_mic_active && is_meeting_app(bundle_id)`
 
-### 3. State Aggregation
-
-The `ContextState` struct holds the world view:
-
-```rust
-pub struct ContextState {
-    pub active_app: Option<AppInfo>, // "VS Code"
-    pub mic_active: bool,            // true
-    pub meeting_app: Option<String>, // "Zoom"
-}
-
-impl ContextState {
-    pub fn effective_mode(&self) -> Mode {
-        if self.meeting_app.is_some() && self.mic_active {
-            return Mode::Meeting;
-        }
-        if let Some(app) = &self.active_app {
-            if is_dev_tool(&app.bundle_id) {
-                return Mode::Dev;
-            }
-        }
-        Mode::Global
-    }
-}
-```
-
 ## Privacy
 
-This engine is powerful, so we keep it tight.
 - **Local Only:** No context data leaves the device.
-- **Ephemeral:** We don't log your window history. We only store the *current* state.
-- **Targeted:** We only care about specific `bundle_id`s (IDEs, Meeting Apps). We don't read window titles (which might contain sensitive document names).
-
-## Platform Support
-
-| Platform | Active App | Mic Activity |
-|----------|------------|--------------|
-| macOS | AppleScript | CoreAudio |
-| Linux | X11/Wayland | PulseAudio |
-| Windows | Win32 API | WASAPI |
-
-*Currently, only macOS is fully implemented.*
+- **Targeted:** We only care about specific `bundle_id`s. We don't read window titles or keystrokes.
+- **Incognito Awareness:** We attempt to detect and ignore private browsing windows to avoid leaking sensitive URLs into the LLM context.

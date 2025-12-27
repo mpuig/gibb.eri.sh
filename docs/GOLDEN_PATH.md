@@ -50,10 +50,10 @@ Standard VAD only detects *silence*. Smart Turn detects *completion*.
 A local LLM (`FunctionGemma`) handles intents without leaking data. It is **Context-Aware**, meaning it only knows about tools relevant to your current activity.
 
 -   **Flow:**
-    1.  User: "Search Wikipedia for Rust."
-    2.  **Context Engine**: Detects you are in "Dev Mode" (VS Code focused).
-    3.  **Router**: Filters available tools (Git, File Search, Wikipedia).
-    4.  **LLM**: Parses intent -> `{"tool": "wikipedia", ...}`.
+    1.  User: "What is the capital of France?"
+    2.  **Context Engine**: Detects you are in "Global Mode".
+    3.  **Router**: Filters available tools (Web Search, App Launcher).
+    4.  **LLM**: Parses intent -> `{"tool": "web_search", "query": "capital of France"}`.
     5.  **Executor**: Runs the tool.
 
 ### 2.4. Always-On (The Rolling Privacy Buffer)
@@ -235,10 +235,7 @@ We use the **Strategy Pattern** to support multiple engines without spaghetti co
 
 Building a local-first engine is a marathon. Here’s what’s on the horizon:
 
-### 11.1. Diarization (Who is speaking?)
-The `crates/diarization` crate exists as a skeleton. We have the traits ready, but we're waiting for an on-device Speaker ID model that fits our privacy and performance constraints. Once integrated, Gibberish will tag "Speaker 1" and "Speaker 2" in real-time.
-
-### 11.2. Persistent Memory (The Hippocampus)
+### 11.1. Persistent Memory (The Hippocampus)
 Currently, the assistant has amnesia between sessions. We plan to add Long-Term Memory via `crates/storage`.
 -   **Explicit:** "Remember that my project ID is 1234."
 -   **Implicit:** Vector search over past transcripts to answer "What did we discuss about the API last week?"
