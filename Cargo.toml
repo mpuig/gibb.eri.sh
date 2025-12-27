@@ -89,7 +89,6 @@ gibberish-audio = { path = "crates/audio" }
 gibberish-bus = { path = "crates/bus" }
 gibberish-context = { path = "crates/context" }
 gibberish-detect = { path = "crates/detect" }
-gibberish-diarization = { path = "crates/diarization" }
 gibberish-events = { path = "crates/events" }
 gibberish-input = { path = "crates/input" }
 gibberish-models = { path = "crates/models" }
