@@ -4,7 +4,7 @@
 //! separated from Tauri state management and async IO.
 
 use crate::functiongemma::Proposal;
-use crate::policy::MIN_CONFIDENCE;
+use crate::policy::{CLARIFICATION_THRESHOLD, MIN_CONFIDENCE};
 use crate::tool_manifest::ToolPolicy;
 use gibberish_context::Mode;
 use std::collections::HashMap;
@@ -55,6 +55,55 @@ pub fn find_best_proposal<'a>(
 /// Returns true if should auto-execute, false if needs approval.
 pub fn determine_execution_mode(policy: &ToolPolicy, config: &RouterConfig) -> bool {
     config.auto_run_all || (policy.read_only && config.auto_run_read_only)
+}
+
+/// Check if a proposal needs clarification due to low confidence.
+///
+/// Returns true if the proposal's confidence is between MIN_CONFIDENCE
+/// and CLARIFICATION_THRESHOLD, indicating we should ask the user
+/// to clarify their intent.
+pub fn needs_clarification(proposal: &Proposal) -> bool {
+    proposal.confidence >= MIN_CONFIDENCE && proposal.confidence < CLARIFICATION_THRESHOLD
+}
+
+/// Suggested clarification questions based on the proposal.
+pub fn clarification_suggestions(proposal: &Proposal, user_text: &str) -> Vec<String> {
+    let mut suggestions = Vec::new();
+
+    // Generic clarification suggestions
+    suggestions.push(format!(
+        "Did you mean to use '{}' for \"{}\"?",
+        proposal.tool,
+        truncate_text(user_text, 50)
+    ));
+
+    // Tool-specific suggestions
+    match proposal.tool.as_str() {
+        "typer" => {
+            suggestions.push("What text would you like me to type?".to_string());
+        }
+        "web_search" => {
+            suggestions.push("What would you like me to search for?".to_string());
+        }
+        "app_launcher" => {
+            suggestions.push("Which application should I open?".to_string());
+        }
+        "system_control" => {
+            suggestions.push("What system action would you like?".to_string());
+        }
+        _ => {}
+    }
+
+    suggestions
+}
+
+/// Truncate text for display, adding ellipsis if needed.
+fn truncate_text(text: &str, max_len: usize) -> String {
+    if text.len() <= max_len {
+        text.to_string()
+    } else {
+        format!("{}...", &text[..max_len])
+    }
 }
 
 #[cfg(test)]

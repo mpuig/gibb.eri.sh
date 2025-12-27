@@ -285,6 +285,34 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             continue;
         };
 
+        // Check if proposal needs clarification (low confidence)
+        if router_logic::needs_clarification(proposal) {
+            let suggestions = router_logic::clarification_suggestions(proposal, &pending_text);
+            emit_router_status(
+                &*event_bus,
+                "needs_clarification",
+                serde_json::json!({
+                    "tool": proposal.tool,
+                    "confidence": proposal.confidence,
+                    "evidence": proposal.evidence,
+                    "suggestions": suggestions,
+                    "text": pending_text.chars().take(100).collect::<String>()
+                }),
+            );
+            // Emit dedicated clarification event for UI
+            event_bus.emit(
+                "tools:clarification_needed",
+                serde_json::json!({
+                    "tool": proposal.tool,
+                    "confidence": proposal.confidence,
+                    "suggestions": suggestions,
+                    "original_text": pending_text,
+                    "ts_ms": chrono::Utc::now().timestamp_millis()
+                }),
+            );
+            continue;
+        }
+
         let Some(policy) = policy_for_tool(&tool_policies, &proposal.tool) else {
             // Tool proposed but not available in current mode
             emit_router_status(

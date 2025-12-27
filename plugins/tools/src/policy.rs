@@ -16,6 +16,11 @@ pub const CACHE_TTL: Duration = Duration::from_secs(60 * 15);
 /// Minimum confidence threshold for tool proposals.
 pub const MIN_CONFIDENCE: f32 = 0.35;
 
+/// Confidence threshold below which we ask for clarification.
+/// Proposals with confidence between MIN_CONFIDENCE and CLARIFICATION_THRESHOLD
+/// trigger a clarification request instead of automatic execution.
+pub const CLARIFICATION_THRESHOLD: f32 = 0.50;
+
 #[cfg(test)]
 mod tests {
     use super::*;
