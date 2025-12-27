@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-unpin-context-mode"
+description = "Enables the unpin_context_mode command without any pre-configured scope."
+commands.allow = ["unpin_context_mode"]
+
+[[permission]]
+identifier = "deny-unpin-context-mode"
+description = "Denies the unpin_context_mode command without any pre-configured scope."
+commands.deny = ["unpin_context_mode"]

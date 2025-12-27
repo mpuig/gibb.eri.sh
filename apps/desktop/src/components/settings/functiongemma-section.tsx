@@ -41,6 +41,12 @@ export function FunctionGemmaSection() {
           </div>
         )}
 
+        {models.length === 0 && !isLoading && !error && (
+          <div className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>
+            No models available. Check console for errors.
+          </div>
+        )}
+
         <div className="space-y-2">
           {models.map((m) => {
             const progress = downloadProgress[m.variant];

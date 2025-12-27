@@ -28,6 +28,7 @@ pub struct HelpTool {
 }
 
 impl HelpTool {
+    #[allow(dead_code)]
     pub fn new(provider: Arc<dyn ToolInfoProvider>) -> Self {
         Self { provider }
     }

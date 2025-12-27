@@ -205,10 +205,28 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
 
         // Find the best proposal above confidence threshold
         let Some(proposal) = find_best_proposal(&model_out.proposals, &tool_policies, min_confidence) else {
+            // No valid tool call found - emit feedback
+            emit_router_status(
+                &app,
+                "no_match",
+                serde_json::json!({
+                    "message": "No matching tool found for this request",
+                    "text": pending_text.chars().take(100).collect::<String>()
+                }),
+            );
             continue;
         };
 
         let Some(policy) = policy_for_tool(&tool_policies, &proposal.tool) else {
+            // Tool proposed but not available in current mode
+            emit_router_status(
+                &app,
+                "tool_unavailable",
+                serde_json::json!({
+                    "tool": proposal.tool,
+                    "message": format!("Tool '{}' is not available in current mode", proposal.tool)
+                }),
+            );
             continue;
         };
 

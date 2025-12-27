@@ -16,9 +16,7 @@ pub use add_todo::AddTodoTool;
 pub use app_launcher::AppLauncherTool;
 pub use file_finder::FileFinderTool;
 pub use git_voice::GitVoiceTool;
-pub use help::{HelpTool, ToolInfo, ToolInfoProvider};
-// Re-export ToolDefinition for dynamic manifest building
-pub use self::ToolDefinition as ToolDef;
+pub use help::{ToolInfo, ToolInfoProvider};
 pub use system_control::SystemControlTool;
 pub use transcript_marker::TranscriptMarkerTool;
 pub use wikipedia::WikipediaTool;
@@ -168,6 +166,7 @@ pub trait Tool: Send + Sync {
 
     /// Generate a cache key for the given arguments.
     /// Returns None if caching is not supported for this tool.
+    #[allow(dead_code)]
     fn cache_key(&self, _args: &serde_json::Value) -> Option<String> {
         None
     }

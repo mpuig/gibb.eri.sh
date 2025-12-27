@@ -59,10 +59,17 @@ export function useFunctionGemma() {
     const unlisteners: (() => void)[] = [];
 
     const init = async () => {
-      const { modelList, current } = await refresh();
-      // If no model is currently loaded, try to auto-load the last one
-      if (!current && mounted) {
-        await autoLoadLastModel(modelList);
+      try {
+        const { modelList, current } = await refresh();
+        // If no model is currently loaded, try to auto-load the last one
+        if (!current && mounted) {
+          await autoLoadLastModel(modelList);
+        }
+      } catch (err) {
+        console.error("Failed to initialize FunctionGemma:", err);
+        if (mounted) {
+          setError(String(err));
+        }
       }
     };
     init();

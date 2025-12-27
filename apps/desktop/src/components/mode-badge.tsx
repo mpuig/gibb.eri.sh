@@ -67,7 +67,9 @@ export function ModeBadge() {
     return null;
   }
 
-  const config = MODE_CONFIG[context.mode];
+  // Fallback to Global if mode is invalid
+  const mode = context.mode && MODE_CONFIG[context.mode] ? context.mode : "Global";
+  const config = MODE_CONFIG[mode];
   const isPinned = context.pinnedMode !== null;
 
   return (

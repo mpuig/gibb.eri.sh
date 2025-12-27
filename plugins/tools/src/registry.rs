@@ -86,6 +86,7 @@ impl ToolRegistry {
     }
 
     /// Get tool names available in the given mode.
+    #[allow(dead_code)]
     pub fn names_for_mode(&self, mode: Mode) -> Vec<&str> {
         self.tools
             .iter()
@@ -159,7 +160,7 @@ impl ToolRegistry {
             "You are an action router that reads live transcript commits.\n\
             You do not chat. You never write natural language.\n\
             \n\
-            Available tools in {} mode: {}\n\
+            Available tools in {mode} mode: {tool_list}\n\
             \n\
             CRITICAL RULES:\n\
             1. ONLY call tools if the user's intent clearly matches a tool's purpose.\n\
@@ -167,8 +168,11 @@ impl ToolRegistry {
             3. If NO tool matches the user's intent, output <end_of_turn> immediately.\n\
             4. Generic phrases like 'do something' are NOT actionable.\n\
             \n\
-            Format: <start_function_call>call:TOOL_NAME{{args}}<end_function_call>\n",
-            mode, tool_list
+            OUTPUT FORMAT:\n\
+            <start_function_call>call:TOOL_NAME{{arg:<escape>value<escape>}}<end_function_call>\n\
+            \n\
+            EXAMPLE: User says 'tell me about Barcelona'\n\
+            <start_function_call>call:wikipedia_city_lookup{{city:<escape>Barcelona<escape>}}<end_function_call>\n"
         )
     }
 
@@ -178,10 +182,21 @@ impl ToolRegistry {
         let declarations: Vec<String> = definitions
             .iter()
             .map(|def| {
-                format!(
-                    "- {}: {} (read_only: {})",
-                    def.name, def.description, def.read_only
-                )
+                let args_desc = if let Some(props) = def.args_schema.get("properties") {
+                    if let Some(obj) = props.as_object() {
+                        let arg_names: Vec<&str> = obj.keys().map(|s| s.as_str()).collect();
+                        if arg_names.is_empty() {
+                            "no args".to_string()
+                        } else {
+                            format!("args: {}", arg_names.join(", "))
+                        }
+                    } else {
+                        "no args".to_string()
+                    }
+                } else {
+                    "no args".to_string()
+                };
+                format!("- {}: {} ({})", def.name, def.description, args_desc)
             })
             .collect();
         declarations.join("\n")

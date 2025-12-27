@@ -17,7 +17,7 @@ function previewPayload(payload: unknown): string {
 }
 
 export const ActionRouterPanel = memo(function ActionRouterPanel() {
-  const { events, lastCityResult, lastCityError, clear } = useActionRouterStore();
+  const { events, lastCityResult, lastCityError, lastNoMatch, clear } = useActionRouterStore();
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -77,6 +77,25 @@ export const ActionRouterPanel = memo(function ActionRouterPanel() {
             <div className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
               {lastCityError.error}
             </div>
+          </div>
+        )}
+
+        {lastNoMatch && (
+          <div
+            className="rounded-lg p-3 mb-3"
+            style={{ background: "rgba(255, 159, 10, 0.10)", border: "1px solid rgba(255, 159, 10, 0.25)" }}
+          >
+            <div className="text-xs mb-1" style={{ color: "var(--color-text-quaternary)" }}>
+              No matching action
+            </div>
+            <div className="text-sm" style={{ color: "var(--color-text-secondary)" }}>
+              {lastNoMatch.message}
+            </div>
+            {lastNoMatch.text && (
+              <div className="text-xs mt-1" style={{ color: "var(--color-text-quaternary)" }}>
+                "{lastNoMatch.text}"
+              </div>
+            )}
           </div>
         )}
 

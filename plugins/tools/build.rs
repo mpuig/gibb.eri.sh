@@ -10,6 +10,9 @@ fn main() {
         "load_functiongemma_model",
         "unload_functiongemma_model",
         "get_current_functiongemma_model",
+        "get_context",
+        "pin_context_mode",
+        "unpin_context_mode",
     ])
     .build();
 }

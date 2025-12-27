@@ -331,6 +331,18 @@
           "markdownDescription": "Denies the get_action_router_settings command without any pre-configured scope."
         },
         {
+          "description": "Enables the get_context command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-context",
+          "markdownDescription": "Enables the get_context command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_context command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-context",
+          "markdownDescription": "Denies the get_context command without any pre-configured scope."
+        },
+        {
           "description": "Enables the get_current_functiongemma_model command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-current-functiongemma-model",
@@ -391,6 +403,18 @@
           "markdownDescription": "Denies the load_functiongemma_model command without any pre-configured scope."
         },
         {
+          "description": "Enables the pin_context_mode command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pin-context-mode",
+          "markdownDescription": "Enables the pin_context_mode command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pin_context_mode command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pin-context-mode",
+          "markdownDescription": "Denies the pin_context_mode command without any pre-configured scope."
+        },
+        {
           "description": "Enables the set_action_router_settings command without any pre-configured scope.",
           "type": "string",
           "const": "allow-set-action-router-settings",
@@ -413,6 +437,18 @@
           "type": "string",
           "const": "deny-unload-functiongemma-model",
           "markdownDescription": "Denies the unload_functiongemma_model command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the unpin_context_mode command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-unpin-context-mode",
+          "markdownDescription": "Enables the unpin_context_mode command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the unpin_context_mode command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-unpin-context-mode",
+          "markdownDescription": "Denies the unpin_context_mode command without any pre-configured scope."
         },
         {
           "description": "Enables the wikipedia_city_lookup command without any pre-configured scope.",

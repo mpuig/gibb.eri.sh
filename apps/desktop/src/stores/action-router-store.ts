@@ -24,14 +24,22 @@ export interface WikipediaCityErrorEvent {
   error: string;
 }
 
+export interface NoMatchEvent {
+  message: string;
+  text: string;
+}
+
 interface ActionRouterState {
   events: RouterStatusEvent[];
   lastCityResult: WikipediaCityEvent | null;
   lastCityError: WikipediaCityErrorEvent | null;
+  lastNoMatch: NoMatchEvent | null;
 
   addEvent: (event: RouterStatusEvent) => void;
   setCityResult: (event: WikipediaCityEvent) => void;
   setCityError: (event: WikipediaCityErrorEvent) => void;
+  setNoMatch: (event: NoMatchEvent) => void;
+  clearNoMatch: () => void;
   clear: () => void;
 }
 
@@ -41,6 +49,7 @@ export const useActionRouterStore = create<ActionRouterState>((set) => ({
   events: [],
   lastCityResult: null,
   lastCityError: null,
+  lastNoMatch: null,
 
   addEvent: (event) =>
     set((state) => ({
@@ -51,6 +60,7 @@ export const useActionRouterStore = create<ActionRouterState>((set) => ({
     set(() => ({
       lastCityResult: event,
       lastCityError: null,
+      lastNoMatch: null,
     })),
 
   setCityError: (event) =>
@@ -58,11 +68,22 @@ export const useActionRouterStore = create<ActionRouterState>((set) => ({
       lastCityError: event,
     })),
 
+  setNoMatch: (event) =>
+    set(() => ({
+      lastNoMatch: event,
+    })),
+
+  clearNoMatch: () =>
+    set(() => ({
+      lastNoMatch: null,
+    })),
+
   clear: () =>
     set(() => ({
       events: [],
       lastCityResult: null,
       lastCityError: null,
+      lastNoMatch: null,
     })),
 }));
 

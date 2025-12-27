@@ -103,7 +103,9 @@ function ModeSettingsCard() {
   }, [initialize]);
 
   const isPinned = context.pinnedMode !== null;
-  const currentConfig = MODE_CONFIG[context.mode];
+  // Fallback to Global if mode is invalid
+  const currentMode = context.mode && MODE_CONFIG[context.mode] ? context.mode : "Global";
+  const currentConfig = MODE_CONFIG[currentMode];
 
   return (
     <div className="card p-4 space-y-4" style={{ background: "var(--color-bg-secondary)" }}>

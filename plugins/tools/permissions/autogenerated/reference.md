@@ -88,6 +88,32 @@ Denies the get_action_router_settings command without any pre-configured scope.
 <tr>
 <td>
 
+`gibberish-tools:allow-get-context`
+
+</td>
+<td>
+
+Enables the get_context command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`gibberish-tools:deny-get-context`
+
+</td>
+<td>
+
+Denies the get_context command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `gibberish-tools:allow-get-current-functiongemma-model`
 
 </td>
@@ -218,6 +244,32 @@ Denies the load_functiongemma_model command without any pre-configured scope.
 <tr>
 <td>
 
+`gibberish-tools:allow-pin-context-mode`
+
+</td>
+<td>
+
+Enables the pin_context_mode command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`gibberish-tools:deny-pin-context-mode`
+
+</td>
+<td>
+
+Denies the pin_context_mode command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
 `gibberish-tools:allow-set-action-router-settings`
 
 </td>
@@ -263,6 +315,32 @@ Enables the unload_functiongemma_model command without any pre-configured scope.
 <td>
 
 Denies the unload_functiongemma_model command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`gibberish-tools:allow-unpin-context-mode`
+
+</td>
+<td>
+
+Enables the unpin_context_mode command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`gibberish-tools:deny-unpin-context-mode`
+
+</td>
+<td>
+
+Denies the unpin_context_mode command without any pre-configured scope.
 
 </td>
 </tr>

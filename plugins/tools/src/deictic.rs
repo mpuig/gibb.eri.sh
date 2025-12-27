@@ -2,6 +2,10 @@
 //!
 //! Handles references like 'this', 'selection', 'clipboard' in tool arguments.
 //! These references are resolved at execution time to actual values.
+//!
+//! Note: This module is infrastructure for future clipboard/selection features.
+
+#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 

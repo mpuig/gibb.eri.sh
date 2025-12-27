@@ -4,6 +4,30 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type Mode = "Meeting" | "Dev" | "Writer" | "Global";
 
+type WireMode = "meeting" | "dev" | "writer" | "global";
+
+const toWireMode = (mode: Mode): WireMode => mode.toLowerCase() as WireMode;
+
+const fromWireMode = (wire: WireMode): Mode => {
+  const map: Record<WireMode, Mode> = {
+    meeting: "Meeting",
+    dev: "Dev",
+    writer: "Writer",
+    global: "Global",
+  };
+  return map[wire] ?? "Global";
+};
+
+interface WireContextState {
+  mode: WireMode;
+  detected_mode: WireMode;
+  pinned_mode: WireMode | null;
+  active_app: string | null;
+  active_app_name: string | null;
+  is_meeting: boolean;
+  timestamp_ms: number;
+}
+
 export interface ContextState {
   mode: Mode;
   detectedMode: Mode;
@@ -41,18 +65,18 @@ export const useContextStore = create<ContextStore>((set, get) => ({
 
   pinMode: async (mode) => {
     try {
-      const result = await invoke<ContextState>("plugin:gibberish-tools|pin_context_mode", {
-        mode,
+      const result = await invoke<WireContextState>("plugin:gibberish-tools|pin_context_mode", {
+        mode: toWireMode(mode),
       });
       set({
         context: {
-          mode: result.mode,
-          detectedMode: result.detectedMode,
-          pinnedMode: result.pinnedMode,
-          activeApp: result.activeApp,
-          activeAppName: result.activeAppName,
-          isMeeting: result.isMeeting,
-          timestampMs: result.timestampMs,
+          mode: fromWireMode(result.mode),
+          detectedMode: fromWireMode(result.detected_mode),
+          pinnedMode: result.pinned_mode ? fromWireMode(result.pinned_mode) : null,
+          activeApp: result.active_app,
+          activeAppName: result.active_app_name,
+          isMeeting: result.is_meeting,
+          timestampMs: result.timestamp_ms,
         },
       });
     } catch (e) {
@@ -62,16 +86,16 @@ export const useContextStore = create<ContextStore>((set, get) => ({
 
   unpinMode: async () => {
     try {
-      const result = await invoke<ContextState>("plugin:gibberish-tools|unpin_context_mode");
+      const result = await invoke<WireContextState>("plugin:gibberish-tools|unpin_context_mode");
       set({
         context: {
-          mode: result.mode,
-          detectedMode: result.detectedMode,
-          pinnedMode: result.pinnedMode,
-          activeApp: result.activeApp,
-          activeAppName: result.activeAppName,
-          isMeeting: result.isMeeting,
-          timestampMs: result.timestampMs,
+          mode: fromWireMode(result.mode),
+          detectedMode: fromWireMode(result.detected_mode),
+          pinnedMode: result.pinned_mode ? fromWireMode(result.pinned_mode) : null,
+          activeApp: result.active_app,
+          activeAppName: result.active_app_name,
+          isMeeting: result.is_meeting,
+          timestampMs: result.timestamp_ms,
         },
       });
     } catch (e) {
@@ -82,16 +106,16 @@ export const useContextStore = create<ContextStore>((set, get) => ({
   initialize: async () => {
     // Fetch initial context
     try {
-      const result = await invoke<ContextState>("plugin:gibberish-tools|get_context");
+      const result = await invoke<WireContextState>("plugin:gibberish-tools|get_context");
       set({
         context: {
-          mode: result.mode,
-          detectedMode: result.detectedMode,
-          pinnedMode: result.pinnedMode,
-          activeApp: result.activeApp,
-          activeAppName: result.activeAppName,
-          isMeeting: result.isMeeting,
-          timestampMs: result.timestampMs,
+          mode: fromWireMode(result.mode),
+          detectedMode: fromWireMode(result.detected_mode),
+          pinnedMode: result.pinned_mode ? fromWireMode(result.pinned_mode) : null,
+          activeApp: result.active_app,
+          activeAppName: result.active_app_name,
+          isMeeting: result.is_meeting,
+          timestampMs: result.timestamp_ms,
         },
         isLoading: false,
       });
@@ -102,7 +126,7 @@ export const useContextStore = create<ContextStore>((set, get) => ({
 
     // Listen for context changes
     listen<{
-      mode: Mode;
+      mode: WireMode;
       active_app: string | null;
       active_app_name: string | null;
       is_meeting: boolean;
@@ -113,8 +137,8 @@ export const useContextStore = create<ContextStore>((set, get) => ({
 
       set({
         context: {
-          mode,
-          detectedMode: mode,
+          mode: fromWireMode(mode),
+          detectedMode: fromWireMode(mode),
           pinnedMode: currentContext.pinnedMode,
           activeApp: active_app,
           activeAppName: active_app_name,
