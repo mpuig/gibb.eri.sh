@@ -15,7 +15,6 @@ mod system_control;
 mod transcript_marker;
 mod typer;
 mod web_search;
-mod wikipedia;
 
 pub use add_todo::AddTodoTool;
 pub use app_launcher::AppLauncherTool;

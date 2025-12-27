@@ -1,3 +1,8 @@
+//! Wikipedia API client.
+//!
+//! Provides functions for searching and fetching Wikipedia summaries.
+//! Used by the web_search tool for Wikipedia lookups.
+
 use crate::state::{CoordinatesDto, WikiSummaryDto};
 use reqwest::StatusCode;
 
@@ -90,7 +95,6 @@ async fn get_summary_with_client(
     lang: &str,
     title: &str,
 ) -> Result<SummaryResponse, WikipediaError> {
-    // No trailing slash - push() will add the title as a new segment
     let base = format!("https://{lang}.wikipedia.org/api/rest_v1/page/summary");
     let mut url = reqwest::Url::parse(&base).map_err(|_| WikipediaError::InvalidLang)?;
     url.path_segments_mut()
@@ -132,11 +136,6 @@ async fn get_summary_with_client(
     })
 }
 
-async fn get_summary(lang: &str, title: &str) -> Result<SummaryResponse, WikipediaError> {
-    let client = reqwest::Client::new();
-    get_summary_with_client(&client, lang, title).await
-}
-
 async fn search_title_with_client(
     client: &reqwest::Client,
     lang: &str,
@@ -170,63 +169,6 @@ async fn search_title_with_client(
     let found = result.pages.into_iter().next().map(|p| p.title);
     tracing::info!(found = ?found, "wikipedia: search result");
     Ok(found)
-}
-
-async fn search_title(lang: &str, query: &str) -> Result<Option<String>, WikipediaError> {
-    let client = reqwest::Client::new();
-    search_title_with_client(&client, lang, query).await
-}
-
-pub async fn fetch_city_summary(
-    lang: &str,
-    city: &str,
-    sentences: u8,
-) -> Result<WikiSummaryDto, WikipediaError> {
-    if !is_valid_lang(lang) {
-        return Err(WikipediaError::InvalidLang);
-    }
-    let city = city.trim();
-    if city.is_empty() {
-        return Err(WikipediaError::NotFound(city.to_string()));
-    }
-
-    // Prefer the city name directly, fallback to search if not found or disambiguation.
-    let mut summary = match get_summary(lang, city).await {
-        Ok(s) => s,
-        Err(WikipediaError::NotFound(_)) => {
-            let Some(title) = search_title(lang, city).await? else {
-                return Err(WikipediaError::NotFound(city.to_string()));
-            };
-            get_summary(lang, &title).await?
-        }
-        Err(e) => return Err(e),
-    };
-
-    // If disambiguation, try search and pick the first result.
-    if summary.r#type == "disambiguation" || summary.extract.is_empty() {
-        let Some(title) = search_title(lang, city).await? else {
-            return Err(WikipediaError::NotFound(city.to_string()));
-        };
-        summary = get_summary(lang, &title).await?;
-    }
-
-    let url = summary
-        .content_urls
-        .as_ref()
-        .and_then(|u| u.desktop.as_ref())
-        .map(|u| u.page.clone())
-        .unwrap_or_else(|| format!("https://{}.wikipedia.org/wiki/{}", lang, summary.title));
-
-    Ok(WikiSummaryDto {
-        title: summary.title.clone(),
-        summary: trim_to_sentences(&summary.extract, sentences),
-        url,
-        thumbnail_url: summary.thumbnail.map(|t| t.source),
-        coordinates: summary.coordinates.map(|c| CoordinatesDto {
-            lat: c.lat,
-            lon: c.lon,
-        }),
-    })
 }
 
 /// Fetch city summary using a shared HTTP client.

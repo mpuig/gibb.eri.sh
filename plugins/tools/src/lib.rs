@@ -42,7 +42,6 @@ use adapters::TauriEventBus;
 use gibberish_events::event_names;
 
 pub use functiongemma::{FunctionGemmaRunner, ModelOutput, Proposal};
-pub use state::WikiSummaryDto;
 
 const PLUGIN_NAME: &str = "gibberish-tools";
 
@@ -84,7 +83,6 @@ impl std::fmt::Debug for SkillWatcherHandle {
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new(PLUGIN_NAME)
         .invoke_handler(tauri::generate_handler![
-            commands::wikipedia_city_lookup,
             commands::get_action_router_settings,
             commands::set_action_router_settings,
             commands::get_functiongemma_status,

@@ -12,3 +12,6 @@ tracing.workspace = true
 uuid.workspace = true
 gibberish-transcript.workspace = true
 gibberish-events = { path = "../events" }
+
+[dev-dependencies]
+tempfile = "3.10"
