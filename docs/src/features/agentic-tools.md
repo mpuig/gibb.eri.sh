@@ -12,8 +12,8 @@ The available tools change dynamically based on your environment.
 
 ### 1. Global Mode (Default)
 Always available.
-- **Tools:** `wikipedia`, `app_launcher`, `system_control`
-- **Example:** "Open Figma", "Turn up the volume", "Search Wikipedia for rust"
+- **Tools:** `web_search`, `app_launcher`, `system_control`
+- **Example:** "Open Figma", "Turn up the volume", "What is quantum computing"
 
 ### 2. Meeting Mode
 Triggered when: A meeting app (Zoom, Teams, Slack) is using the microphone.
@@ -91,7 +91,7 @@ This allows generic commands to work across any application without specific int
 ### Global
 - **System Control**: Volume, Mute, Media keys.
 - **App Launcher**: Opens applications.
-- **Wikipedia**: Knowledge lookups.
+- **Web Search**: Knowledge lookups (Wikipedia by default, extensible to other sources).
 
 ### Meeting
 - **Transcript Marker**: Inserts `[FLAG]` or `[TODO]` tags into the transcript file.
