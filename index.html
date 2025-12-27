@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gibberish // Local Real-Time AI</title>
-    <meta name="description" content="Rust-powered, local-first speech intelligence. No cloud. No latency.">
+    <title>gibb.eri.sh // Context-Aware Voice OS</title>
+    <meta name="description" content="Local-first voice AI for macOS. It listens, it types, it runs scripts.">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡️</text></svg>">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
@@ -293,12 +293,12 @@
 
     <header class="container hero">
         <div class="hero-text">
-            <div class="tag">V 0.8.0</div>
-            <h1>Intelligence without<br>the cloud.</h1>
-            <p>A local-first, zero-latency voice assistant engine built with <span class="accent">Rust</span> and Tauri. Your audio never leaves localhost.</p>
+            <div class="tag">V 0.9.0</div>
+            <h1>Local Voice OS.</h1>
+            <p>A context-aware agent for your Mac. Local, fast, and extensible.</p>
             <div class="cta-group">
-                <a href="https://github.com/mpuig/gibb.eri.sh/releases/latest/download/gibb.eri.sh-macos.dmg" class="btn btn-primary">Download for macOS</a>
-                <a href="https://github.com/mpuig/gibb.eri.sh" class="btn btn-secondary">View Source</a>
+                <a href="https://github.com/mpuig/gibb.eri.sh/releases/latest/download/gibb.eri.sh-macos.dmg" class="btn btn-primary">Download v0.9.0</a>
+                <a href="https://github.com/mpuig/gibb.eri.sh" class="btn btn-secondary">Source Code</a>
             </div>
         </div>
 
@@ -312,9 +312,9 @@
                     [INFO] Audio Bus: Active (Zero-Copy Arc&lt;[f32]&gt;)<br>
                     [INFO] Latency: 45ms | RTF: 0.12<br>
                     [INFO] Model: Sherpa Zipformer (Streaming)<br>
-                    [INFO] VAD: Silero (Active)<br>
-                    [INFO] SmartTurn: Enabled<br>
-                    [SUCCESS] Listening on CoreAudio Device...
+                    [INFO] Context: Dev Mode (VS Code Active)<br>
+                    [INFO] Tools: [git_voice, file_finder] loaded<br>
+                    [SUCCESS] Listening...
                 </div>
                 <br>
                 <div><span class="hl-cmd">$</span> <span class="blink">_</span></div>
@@ -342,12 +342,12 @@
                 <p>Choose your trade-off. <strong>Sherpa</strong> for instant feedback, <strong>Parakeet/Whisper</strong> for high-accuracy batch processing.</p>
             </div>
             <div class="cell">
-                <h3>05. Agentic</h3>
-                <p>Local LLM (FunctionGemma) analyzes your speech to trigger desktop tools. Say "Search Wikipedia for Rust" and it opens.</p>
+                <h3>05. Agent Skills</h3>
+                <p>Extensible via Markdown. Drop a <code>SKILL.md</code> file to add new tools (Bash, Python) without recompiling.</p>
             </div>
             <div class="cell">
-                <h3>06. Context Aware</h3>
-                <p>Modes adapt to context. <strong>Global</strong> for general tasks, <strong>Dev</strong> when coding, <strong>Meeting</strong> during calls. Tools are filtered before LLM inference.</p>
+                <h3>06. Context Engine</h3>
+                <p>It knows what you're doing. Coding? Git tools enabled. Meeting? Transcription tools enabled.</p>
             </div>
         </div>
     </section>
@@ -372,8 +372,8 @@
                 <span class="accent">Arc&lt;[f32]&gt;</span>
             </div>
             <div class="node">
-                STT Worker
-                <span>std::thread</span>
+                Context Engine
+                <span>AppleScript</span>
             </div>
             <div class="node">
                 Inference

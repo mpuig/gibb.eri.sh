@@ -15,6 +15,7 @@
   - [Hybrid Inference Engine](./features/hybrid-inference.md)
   - [Smart Turn Detection](./features/smart-turn.md)
   - [Agentic Tools](./features/agentic-tools.md)
+  - [Agent Skills](./features/skills.md)
 
 # Architecture
 

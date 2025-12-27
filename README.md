@@ -1,155 +1,59 @@
-# gibb.eri.sh // Local Voice OS
+# gibb.eri.sh
 
-**Your Mac, but it listens.**
+**Local-first voice AI for macOS. It listens, it types, it runs scripts.**
 
-gibb.eri.sh is a **context-aware Voice OS** that runs entirely on `localhost`.
-It doesn't just transcribe; it sees what you're doing (coding, meeting, browsing) and executes relevant actions locally.
+> "I build voice bots for a living. I decided to build the one I actually wanted to use."
 
-Zero-cloud. Zero-latency. 100% Rust.
+## The Pitch
 
-## Why?
+I build voice bots for a living. Most of them are slow, privacy-invasive, and fragile. I decided to build the one I actually wanted to use.
 
-Most transcription apps send your audio to cloud APIs. This one doesn't.
+gibb.eri.sh is a **Context-Aware Voice OS**. It runs entirely on `localhost`.
+It doesn't just transcribe speech; it detects what you're doing (coding in VS Code, meeting in Zoom) and executes relevant tools.
 
-It uses a zero-copy audio bus to stream microphone data directly to local AI models, bypassing the JavaScript bridge.
+**Tech Stack:**
+*   **Rust:** For the heavy lifting (Audio, Inference, State).
+*   **Tauri v2:** For the UI (lightweight, secure).
+*   **ONNX Runtime:** For local model inference (Sherpa, FunctionGemma).
+*   **Agent Skills:** For extensibility (drop a Markdown file, get a new tool).
 
-## Features
+## What it does (v0.9.0)
 
-- **🔒 Private**: Audio processed locally, never uploaded
-- **⚡️ Zero-Latency:** Words appear char-by-char as you speak (<200ms lag)
-- **🧠 Context Engine:** Detects your active app (VS Code, Zoom, browsers) to enable relevant tools
-- **🧠 Smart Turn Detection:** Semantic analysis knows when you've finished a sentence
-- **⌨️ The Typer:** Voice-to-keyboard - speak and it types at your cursor (any app)
-- **🔍 Browser Context:** Reads your current URL for web-aware commands
-- **🛡️ Panic Hotkey:** Press Esc 3x to instantly abort any input operation
-- **🔗 Tool Chaining:** Multi-step workflows (e.g., search → summarize → type)
-- **🎯 Hybrid inference**: Streaming (Sherpa) for instant feedback, batch (Parakeet) for accuracy
-- **📝 Summarization**: Natural language summaries of tool outputs
+1.  **Transcribes in Real-Time:** <45ms latency. Words appear as you speak.
+2.  **Understands Context:** "Summarize *this*" reads your active window's selection.
+3.  **Executes Skills:** "Undo last commit" runs `git reset`.
+4.  **Respects Privacy:** Audio never leaves your machine. Models run on the Apple Neural Engine.
 
-## Requirements
+## Who is this for?
 
-- macOS 13+ (Apple Silicon recommended)
-- Rust 1.70+
-- Node.js 18+
+Right now? **Developers and Power Users.**
+If you know what `git status` means and you're comfortable with a terminal, this is for you.
+If you want a polished consumer product, wait for v1.0.
 
 ## Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/mpuig/gibb.eri.sh.git
+# Clone the repo
+git clone https://github.com/mpuig/gibb.eri.sh
 cd gibb.eri.sh
 
-# Install frontend dependencies
-cd apps/desktop
+# Install dependencies (Node + Rust required)
 npm install
 
-# Build and run
+# Run dev mode
 npm run tauri dev
 ```
 
-## Project Structure
+## The Architecture
 
-```
-gibb.eri.sh/
-├── apps/
-│   └── desktop/          # Tauri + React frontend
-│       ├── src/          # React components, hooks, stores
-│       └── src-tauri/    # Tauri app configuration
-├── crates/
-│   ├── audio/            # Audio capture and processing
-│   ├── context/          # Context detection (active app, mode)
-│   ├── diarization/      # Speaker diarization
-│   ├── events/           # Shared event DTOs across plugins
-│   ├── models/           # Model management and downloads
-│   ├── parakeet/         # ONNX-based STT engine (Parakeet)
-│   ├── sherpa/           # Sherpa-ONNX STT engine (Zipformer transducer)
-│   ├── storage/          # SQLite persistence
-│   ├── stt/              # STT engine traits and abstractions
-│   ├── transcript/       # Transcript data structures
-│   └── vad/              # Voice Activity Detection (Silero)
-└── plugins/
-    ├── permissions/      # macOS permission handling
-    ├── recorder/         # Audio recording plugin
-    ├── stt-worker/       # STT processing plugin
-    ├── tools/            # Voice command tools and router
-    └── tray/             # Menu bar integration
-```
+It's a Modular Monolith. We use a **Zero-Copy Audio Bus** to stream mic data to multiple consumers (VAD, STT, Visualizer) without locking.
 
-## Architecture
+*   **The Ears:** Sherpa-ONNX (Streaming) + Parakeet (Batch).
+*   **The Brain:** Google FunctionGemma (Router).
+*   **The Hands:** Agent Skills (Bash/Python scripts defined in Markdown).
 
-The app follows clean architecture principles:
-
-- **Domain Layer** (`crates/`) - Core business logic and traits
-- **Infrastructure Layer** (`crates/storage`, `crates/parakeet`) - Concrete implementations
-- **Application Layer** (`plugins/`) - Tauri plugins bridging UI and domain
-- **Presentation Layer** (`apps/desktop/src/`) - React UI components
-
-Key design decisions:
-- `SttEngine` trait allows swapping speech recognition backends
-- `TranscriptRepository` trait decouples storage from domain
-- Service layer in plugins separates business logic from Tauri commands
-- Zustand stores for frontend state management
-
-## Models
-
-gibb.eri.sh uses NVIDIA Parakeet models via ONNX Runtime:
-
-| Model | Size | Description |
-|-------|------|-------------|
-| Parakeet TDT 0.6B V2 | ~600MB | Fast, streaming-capable (Recommended) |
-| Parakeet CTC 0.6B | ~600MB | Higher accuracy, batch processing |
-| Parakeet TDT 1.1B | ~1.1GB | Best accuracy, requires more memory |
-| Sherpa Zipformer (EN) | ~250MB | Low-latency streaming transducer (English) |
-| **NeMo Conformer** | CTC | **Catalan** (Specialized) | ~500MB |
-
-Models are downloaded on first use and cached in `~/Library/Application Support/gibberish/models/`.
-
-## Usage
-
-1. **First Launch** - Select and download a model in Settings
-2. **Recording** - Click the record button or use the menu bar icon
-3. **View Transcript** - Text appears in real-time during recording
-4. **Browse Sessions** - Access past recordings in the Sessions tab
-5. **Export** - Use the export menu to save as TXT, SRT, or JSON
-
-## Development
-
-```bash
-# Run in development mode
-cd apps/desktop
-npm run tauri dev
-
-# Check Rust compilation
-cargo check -p notary-desktop
-
-# Check TypeScript
-npx tsc --noEmit
-
-# Build for release
-npm run tauri build
-```
-
-## Tech Stack
-
-**Backend (Rust)**
-- Tauri 2.0 - Desktop app framework
-- ONNX Runtime - ML inference
-- cpal - Cross-platform audio
-- Silero VAD - Voice activity detection
-- rusqlite - SQLite database
-
-**Frontend (TypeScript)**
-- React 19
-- Zustand - State management
-- Tailwind CSS - Styling
-- Vite - Build tool
+[Read the Architecture Docs](./docs/src/introduction.md)
 
 ## License
 
-MIT
-
-## Acknowledgments
-
-- [NVIDIA Parakeet](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo/models/parakeet-tdt-1.1b) - Speech recognition models
-- [Silero VAD](https://github.com/snakers4/silero-vad) - Voice activity detection
-- [Tauri](https://tauri.app/) - Desktop app framework
+MIT. Hack on it.

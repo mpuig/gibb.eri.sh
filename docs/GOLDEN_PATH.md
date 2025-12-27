@@ -1,17 +1,17 @@
-# Gibberish // The Golden Path
+# gibb.eri.sh // The Golden Path
 
-> **"Intelligence without the cloud."**
+> **"Most voice bots suck. I decided to build the one I actually wanted to use."**
 
-Welcome to the architectural manifesto of Gibberish. This document is a survival guide for building high-performance, local-first AI without selling your soul (or your user's data) to a cloud provider.
+Welcome to the architectural manifesto of gibb.eri.sh. This document explains *why* we built it this way, and how to hack on it without breaking the core principles.
 
 ---
 
 ## 1. The Philosophy (Or: Why We Did This)
 
-We hold three core beliefs that drive every line of code:
+I build voice bots for a living. Most of them are slow, privacy-invasive, and fragile. I decided to build the one I actually wanted to use. We hold three core beliefs:
 
 ### 1.1. Privacy isn't a Toggle, it's a Topology
-**Your voice never leaves `localhost`.**
+**Your voice (and your screen context) never leaves `localhost`.**
 -   **The Rule:** No OpenAI. No Google Speech API. No AWS Transcribe.
 -   **The Tech:** All models run on-device using **ONNX Runtime** and quantized models (int8).
 -   **The Win:** Zero latency, zero fees, and zero chance of a third party reading your transcripts.
@@ -21,11 +21,11 @@ We hold three core beliefs that drive every line of code:
 -   **The Metric:** Time-to-first-token must be **< 200ms**.
 -   **The Implementation:** We don't use HTTP or JSON for audio. We built a **Zero-Copy Audio Bus** in Rust that streams raw floats from the mic to the model via memory-efficient `Arc` pointers.
 
-### 1.3. Rust + Tauri (Efficiency over Ease)
+### 1.3. No Slop Software
 **We build for the metal, not the browser.**
 -   **The Stack:** Rust for the heavy lifting. Tauri for the pretty pixels.
 -   **The Result:** A 15MB binary that idles at <200MB RAM.
--   **The Engine:** Pure Rust running on dedicated OS threads, decoupled from the UI's event loop.
+-   **The Irony:** Yes, the UI is web-based (React), but it's a *passenger*. The engine is pure, unadulterated Rust running on native threads.
 
 ---
 
