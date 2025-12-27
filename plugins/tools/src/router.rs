@@ -3,14 +3,19 @@
 //! Receives transcript commits, runs FunctionGemma inference,
 //! and dispatches tool execution via the registry.
 //!
-//! Pure decision logic is in `router_logic` module for testability.
+//! Architecture:
+//! - `context_injector`: JIT context enrichment (clipboard, selection, URL)
+//! - `inference`: Inference orchestration (primary, followup, summary)
+//! - `router_logic`: Pure decision logic (testable)
+//! - `executor`: Tool execution
 
+use crate::context_injector;
 use crate::executor::{execute_tool, ExecutionMode, ExecutionOutcome};
+use crate::inference::{self, InferenceResult};
 use crate::policy::DEBOUNCE;
 use crate::registry::ToolRegistry;
 use crate::router_logic::{self, RouterConfig};
 use crate::tool_manifest::ToolPolicy;
-use gibberish_context::platform::{get_active_browser_url, get_clipboard_preview, get_selection_preview};
 use gibberish_events::{event_names, EventBus, StreamCommitEvent};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -36,7 +41,6 @@ fn policy_for_tool<'a>(
 }
 
 /// Validate tool args and attempt repair via inference if validation fails.
-/// Returns Some(args) if valid/repaired, None if repair failed.
 async fn validate_and_repair_args(
     state: &tokio::sync::Mutex<crate::state::ToolsState>,
     event_bus: &Arc<dyn EventBus>,
@@ -53,7 +57,6 @@ async fn validate_and_repair_args(
     }
 
     let phase_prefix = if is_followup { "followup_" } else { "" };
-
     emit_router_status(
         &**event_bus,
         &format!("{}args_infer_start", phase_prefix),
@@ -63,25 +66,20 @@ async fn validate_and_repair_args(
     // Get runner for args repair
     let runner = {
         let guard = state.lock().await;
-        guard
-            .functiongemma
-            .model
-            .as_ref()
-            .map(|m| std::sync::Arc::clone(&m.runner))
+        guard.functiongemma.model.as_ref().map(|m| Arc::clone(&m.runner))
     }?;
 
-    let dev_ctx = developer_context.clone();
-    let tool = tool_name.to_string();
-    let text = pending_text.to_string();
+    let result = inference::validate_and_repair_args(
+        runner,
+        developer_context.clone(),
+        pending_text,
+        tool_name,
+        args,
+        |a| policy.validate_args(a).map(|_| ()),
+    )
+    .await;
 
-    let repaired = tokio::task::spawn_blocking(move || {
-        runner.infer_args_object(dev_ctx.as_ref(), &tool, &text)
-    })
-    .await
-    .map_err(|e| e.to_string())
-    .and_then(|r| r.map_err(|e| e.to_string()));
-
-    match repaired {
+    match result {
         Ok(v) => {
             emit_router_status(
                 &**event_bus,
@@ -203,56 +201,37 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             continue;
         };
 
-        // Phase 2: Context Injection
-        // Read clipboard/selection/URL just-in-time and build context-enriched prompt
-        let context_snippet = {
+        // Phase 2: Context Injection via dedicated injector
+        let injected = {
             let mut guard = state.lock().await;
-            // Update context with current clipboard/selection/URL
-            guard.context.system.clipboard_preview = get_clipboard_preview();
-            guard.context.system.selection_preview = get_selection_preview();
-            guard.context.system.active_url = get_active_browser_url();
-            guard.context.to_prompt_snippet()
+            context_injector::inject_context(&mut guard.context)
         };
 
         // Build context-enriched developer prompt
-        let enriched_developer_context = format!(
-            "{}\n\nCurrent Context:\n{}",
-            developer_context, context_snippet
-        );
+        let enriched_developer_context =
+            context_injector::enrich_developer_context(&developer_context, &injected.snippet);
 
         emit_router_status(
             &*event_bus,
             "infer_start",
             serde_json::json!({
-                "context": context_snippet
+                "context": injected.snippet,
+                "has_clipboard": injected.has_clipboard,
+                "has_selection": injected.has_selection,
+                "has_url": injected.has_url,
             }),
         );
 
-        let pending_text_for_model = pending_text.clone();
-        let developer_context_for_model: Arc<str> = Arc::from(enriched_developer_context);
-        let infer_cancel_for_model = infer_cancel.clone();
-
-        let result = tokio::task::spawn_blocking(move || {
-            if infer_cancel_for_model.is_cancelled() {
-                return Err(crate::functiongemma::FunctionGemmaError::Inference(
-                    "cancelled".to_string(),
-                ));
-            }
-            runner.infer_once(
-                developer_context_for_model.as_ref(),
-                &pending_text_for_model,
-            )
-        })
+        // Run primary inference via inference module
+        let model_out = match inference::run_primary_inference(
+            Arc::clone(&runner),
+            Arc::from(enriched_developer_context),
+            pending_text.clone(),
+            infer_cancel.clone(),
+        )
         .await
-        .map_err(|e| e.to_string())
-        .and_then(|r| r.map_err(|e| e.to_string()));
-
-        let model_out = match result {
-            Ok(out) => {
-                if infer_cancel.is_cancelled() {
-                    emit_router_status(&*event_bus, "infer_cancelled", serde_json::json!({}));
-                    continue;
-                }
+        {
+            InferenceResult::Success(out) => {
                 emit_router_status(
                     &*event_bus,
                     "infer_done",
@@ -260,11 +239,11 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                 );
                 out
             }
-            Err(err) => {
-                if infer_cancel.is_cancelled() {
-                    emit_router_status(&*event_bus, "infer_cancelled", serde_json::json!({}));
-                    continue;
-                }
+            InferenceResult::Cancelled => {
+                emit_router_status(&*event_bus, "infer_cancelled", serde_json::json!({}));
+                continue;
+            }
+            InferenceResult::Error(err) => {
                 emit_router_status(&*event_bus, "infer_error", serde_json::json!({ "error": err }));
                 continue;
             }
@@ -414,81 +393,60 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
 
         // Optional follow-up: after a tool executes, give the model a chance to
         // propose a next tool (e.g., `web_search` -> `typer`) based on the tool output.
-        if let Some(output) = tool_output.clone() {
+        if let Some(ref output) = tool_output {
             let runner_for_followup = {
                 let guard = state.lock().await;
-                guard
-                    .functiongemma
-                    .model
-                    .as_ref()
-                    .map(|m| std::sync::Arc::clone(&m.runner))
+                guard.functiongemma.model.as_ref().map(|m| Arc::clone(&m.runner))
             };
 
-            if let Some(runner) = runner_for_followup {
-                // Keep the follow-up context small; only include a short JSON preview.
-                let output_preview =
-                    serde_json::to_string(&output).unwrap_or_else(|_| output.to_string());
-                let output_preview = if output_preview.len() > 1400 {
-                    format!("{}...", &output_preview[..1400])
-                } else {
-                    output_preview
-                };
-
-                let followup_text = format!(
-                    "Original request:\n{pending_text}\n\nTool `{tool}` output (JSON):\n{output_preview}\n\nIf another tool should be called to fully satisfy the original request, call it now. Otherwise output <end_of_turn>.",
-                    tool = proposal.tool.as_str()
-                );
-
+            if let Some(followup_runner) = runner_for_followup {
                 emit_router_status(
                     &*event_bus,
                     "followup_infer_start",
-                    serde_json::json!({
-                        "after_tool": proposal.tool.as_str(),
-                    }),
+                    serde_json::json!({ "after_tool": proposal.tool.as_str() }),
                 );
 
-                // Clone for args repair (after move into closure)
-                let developer_context_for_args = developer_context.clone();
+                let followup_result = inference::run_followup_inference(
+                    followup_runner,
+                    developer_context.clone(),
+                    &pending_text,
+                    &proposal.tool,
+                    output,
+                )
+                .await;
 
-                let followup = tokio::task::spawn_blocking(move || {
-                    runner.infer_once(developer_context.as_ref(), &followup_text)
-                })
-                .await
-                .map_err(|e| e.to_string())
-                .and_then(|r| r.map_err(|e| e.to_string()));
-
-                if let Ok(followup_out) = followup {
+                if let InferenceResult::Success(followup_out) = followup_result {
                     emit_router_status(
                         &*event_bus,
                         "followup_infer_done",
-                        serde_json::json!({
-                            "raw": followup_out.raw_text,
-                        }),
+                        serde_json::json!({ "raw": followup_out.raw_text }),
                     );
 
-                    if let Some(next) =
-                        router_logic::find_best_proposal(&followup_out.proposals, &tool_policies, router_settings.min_confidence)
-                    {
+                    if let Some(next) = router_logic::find_best_proposal(
+                        &followup_out.proposals,
+                        &tool_policies,
+                        router_settings.min_confidence,
+                    ) {
                         if let Some(next_policy) = policy_for_tool(&tool_policies, &next.tool) {
-                            // Validate and repair args (same logic as primary flow)
                             let validated_args = validate_and_repair_args(
                                 &state,
                                 &event_bus,
-                                &developer_context_for_args,
+                                &developer_context,
                                 &pending_text,
                                 next_policy,
                                 &next.tool,
                                 next.args.clone(),
-                                true, // is_followup
+                                true,
                             )
                             .await;
 
                             if let Some(next_args) = validated_args {
-                                let next_execution_mode = if router_logic::determine_execution_mode(next_policy, &router_settings) {
-                                    ExecutionMode::AutoRun
-                                } else {
-                                    ExecutionMode::RequireApproval
-                                };
+                                let next_execution_mode =
+                                    if router_logic::determine_execution_mode(next_policy, &router_settings) {
+                                        ExecutionMode::AutoRun
+                                    } else {
+                                        ExecutionMode::RequireApproval
+                                    };
 
                                 let _ = execute_tool(
                                     &state,
@@ -510,32 +468,23 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         if let Some(output) = tool_output {
             let runner_for_summary = {
                 let guard = state.lock().await;
-                guard
-                    .functiongemma
-                    .model
-                    .as_ref()
-                    .map(|m| std::sync::Arc::clone(&m.runner))
+                guard.functiongemma.model.as_ref().map(|m| Arc::clone(&m.runner))
             };
 
-            if let Some(runner) = runner_for_summary {
-                let tool_name = proposal.tool.clone();
-                let user_text = pending_text.clone();
-                let output_clone = output.clone();
-
+            if let Some(summary_runner) = runner_for_summary {
                 emit_router_status(
                     &*event_bus,
                     "summary_start",
-                    serde_json::json!({
-                        "tool": tool_name
-                    }),
+                    serde_json::json!({ "tool": proposal.tool }),
                 );
 
-                let summary_result = tokio::task::spawn_blocking(move || {
-                    runner.summarize_tool_output(&tool_name, &output_clone, &user_text)
-                })
-                .await
-                .map_err(|e| e.to_string())
-                .and_then(|r| r.map_err(|e| e.to_string()));
+                let summary_result = inference::generate_summary(
+                    summary_runner,
+                    proposal.tool.clone(),
+                    output,
+                    pending_text.clone(),
+                )
+                .await;
 
                 match summary_result {
                     Ok(summary) => {
@@ -547,7 +496,6 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                                 "summary": summary
                             }),
                         );
-                        // Emit a dedicated event for the UI to display/speak
                         event_bus.emit(
                             "tools:summary",
                             serde_json::json!({

@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 
 mod adapters;
 mod commands;
+mod context_injector;
 mod deictic;
 mod environment;
 mod error;
@@ -16,6 +17,7 @@ mod executor;
 mod functiongemma;
 mod functiongemma_download;
 mod functiongemma_models;
+mod inference;
 mod parser;
 mod policy;
 mod prompt_builder;
