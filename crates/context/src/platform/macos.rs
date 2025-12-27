@@ -154,6 +154,171 @@ pub fn get_clipboard_preview() -> Option<String> {
     Some(preview)
 }
 
+/// Known browser bundle IDs for URL detection.
+pub const BROWSER_BUNDLE_IDS: &[&str] = &[
+    "com.apple.Safari",
+    "com.google.Chrome",
+    "org.mozilla.firefox",
+    "company.thebrowser.Browser", // Arc
+    "com.brave.Browser",
+    "com.microsoft.edgemac",
+    "com.vivaldi.Vivaldi",
+    "com.operasoftware.Opera",
+];
+
+/// Check if the given bundle ID is a browser.
+pub fn is_browser(bundle_id: &str) -> bool {
+    BROWSER_BUNDLE_IDS.iter().any(|&b| b == bundle_id)
+}
+
+/// Get the active browser tab URL.
+///
+/// Uses AppleScript to query the frontmost browser for its active tab URL.
+/// Returns None if:
+/// - The frontmost app is not a supported browser
+/// - The browser is in private/incognito mode
+/// - AppleScript execution fails
+pub fn get_browser_url(bundle_id: &str) -> Option<String> {
+    if !is_browser(bundle_id) {
+        return None;
+    }
+
+    let script = match bundle_id {
+        "com.apple.Safari" => r#"
+            tell application "Safari"
+                if (count of windows) > 0 then
+                    set frontWindow to front window
+                    -- Check for private browsing (Private mode windows have no "current tab")
+                    try
+                        if frontWindow's name contains "Private" then
+                            return ""
+                        end if
+                        return URL of current tab of frontWindow
+                    on error
+                        return ""
+                    end try
+                end if
+            end tell
+            return ""
+        "#,
+        "com.google.Chrome" | "com.brave.Browser" | "com.microsoft.edgemac" | "com.vivaldi.Vivaldi" => {
+            // Chromium-based browsers use the same AppleScript structure
+            let app_name = match bundle_id {
+                "com.google.Chrome" => "Google Chrome",
+                "com.brave.Browser" => "Brave Browser",
+                "com.microsoft.edgemac" => "Microsoft Edge",
+                "com.vivaldi.Vivaldi" => "Vivaldi",
+                _ => return None,
+            };
+            return get_chromium_url(app_name);
+        }
+        "org.mozilla.firefox" => r#"
+            tell application "Firefox"
+                if (count of windows) > 0 then
+                    try
+                        -- Firefox's AppleScript support is limited
+                        -- We get the URL via accessibility if available
+                        tell application "System Events"
+                            tell process "Firefox"
+                                set frontWindow to front window
+                                -- Check for private window
+                                if name of frontWindow contains "Private" then
+                                    return ""
+                                end if
+                                -- Try to get URL from address bar
+                                set urlField to text field 1 of toolbar 1 of frontWindow
+                                return value of urlField
+                            end tell
+                        end tell
+                    on error
+                        return ""
+                    end try
+                end if
+            end tell
+            return ""
+        "#,
+        "company.thebrowser.Browser" => r#"
+            tell application "Arc"
+                if (count of windows) > 0 then
+                    try
+                        set frontWindow to front window
+                        return URL of active tab of frontWindow
+                    on error
+                        return ""
+                    end try
+                end if
+            end tell
+            return ""
+        "#,
+        "com.operasoftware.Opera" => {
+            return get_chromium_url("Opera");
+        }
+        _ => return None,
+    };
+
+    execute_url_script(script)
+}
+
+/// Get URL from Chromium-based browser.
+fn get_chromium_url(app_name: &str) -> Option<String> {
+    let script = format!(
+        r#"
+        tell application "{}"
+            if (count of windows) > 0 then
+                set frontWindow to front window
+                -- Check for incognito mode
+                try
+                    if mode of frontWindow is "incognito" then
+                        return ""
+                    end if
+                on error
+                    -- mode property might not exist, continue
+                end try
+                try
+                    return URL of active tab of frontWindow
+                on error
+                    return ""
+                end try
+            end if
+        end tell
+        return ""
+        "#,
+        app_name
+    );
+
+    execute_url_script(&script)
+}
+
+/// Execute AppleScript to get URL.
+fn execute_url_script(script: &str) -> Option<String> {
+    let output = Command::new("osascript")
+        .args(["-e", script])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let url = String::from_utf8_lossy(&output.stdout);
+    let url = url.trim();
+
+    // Filter out empty results and common non-URLs
+    if url.is_empty() || url == "missing value" {
+        return None;
+    }
+
+    // Basic URL validation - should start with http(s) or file
+    if !url.starts_with("http://")
+        && !url.starts_with("https://")
+        && !url.starts_with("file://")
+    {
+        return None;
+    }
+
+    Some(url.to_string())
+}
+
 /// Get the currently selected text using Accessibility API.
 ///
 /// Returns the selected text in the frontmost application.

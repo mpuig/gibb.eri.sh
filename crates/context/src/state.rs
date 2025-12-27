@@ -37,6 +37,10 @@ pub struct SystemContext {
     /// Preview of currently selected text (truncated for prompt injection)
     #[serde(default)]
     pub selection_preview: Option<String>,
+
+    /// Active browser tab URL (when a browser is focused)
+    #[serde(default)]
+    pub active_url: Option<String>,
 }
 
 impl Default for SystemContext {
@@ -48,6 +52,7 @@ impl Default for SystemContext {
             timestamp_ms: chrono::Utc::now().timestamp_millis(),
             clipboard_preview: None,
             selection_preview: None,
+            active_url: None,
         }
     }
 }
@@ -159,6 +164,12 @@ impl ContextState {
         if let Some(ref sel) = self.system.selection_preview {
             let sanitized = sanitize_for_prompt(sel, 200);
             lines.push(format!("Selection: \"{}\"", sanitized));
+        }
+
+        // Active browser URL (sanitized)
+        if let Some(ref url) = self.system.active_url {
+            let sanitized = sanitize_for_prompt(url, 200);
+            lines.push(format!("URL: {}", sanitized));
         }
 
         // Current date/time (useful for scheduling tools)

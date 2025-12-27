@@ -65,8 +65,8 @@ impl ContextPoller {
 
             while running.load(Ordering::SeqCst) {
                 // Poll current system state
-                // Note: clipboard/selection are populated just-in-time in router,
-                // not on every poll (expensive)
+                // Note: clipboard/selection/active_url are populated just-in-time in router,
+                // not on every poll (expensive AppleScript calls)
                 let system = SystemContext {
                     active_app: provider.get_active_app(),
                     is_mic_active: provider.is_mic_active(),
@@ -74,6 +74,7 @@ impl ContextPoller {
                     timestamp_ms: chrono::Utc::now().timestamp_millis(),
                     clipboard_preview: None,
                     selection_preview: None,
+                    active_url: None,
                 };
 
                 // Update state and check if mode changed

@@ -10,7 +10,7 @@ use crate::policy::DEBOUNCE;
 use crate::registry::ToolRegistry;
 use crate::router_logic::{self, RouterConfig};
 use crate::tool_manifest::ToolPolicy;
-use gibberish_context::platform::{get_clipboard_preview, get_selection_preview};
+use gibberish_context::platform::{get_browser_url, get_clipboard_preview, get_selection_preview};
 use gibberish_events::{event_names, EventBus, StreamCommitEvent};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -204,12 +204,19 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         };
 
         // Phase 2: Context Injection
-        // Read clipboard/selection just-in-time and build context-enriched prompt
+        // Read clipboard/selection/URL just-in-time and build context-enriched prompt
         let context_snippet = {
             let mut guard = state.lock().await;
             // Update context with current clipboard/selection
             guard.context.system.clipboard_preview = get_clipboard_preview();
             guard.context.system.selection_preview = get_selection_preview();
+            // Get browser URL if active app is a browser
+            guard.context.system.active_url = guard
+                .context
+                .system
+                .active_app
+                .as_ref()
+                .and_then(|app| get_browser_url(&app.bundle_id));
             guard.context.to_prompt_snippet()
         };
 
