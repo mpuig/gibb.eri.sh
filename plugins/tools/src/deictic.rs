@@ -3,20 +3,12 @@
 //! Handles references like 'this', 'selection', 'clipboard' in tool arguments.
 //! These references are resolved at execution time to actual values.
 //!
-//! # Status: Infrastructure Only
+//! Currently supported references:
+//! - `clipboard`: Resolved via arboard clipboard access
 //!
-//! This module provides the resolution infrastructure but is **not yet wired up**
-//! to the tool executor. The `ToolContext` does not currently include providers
-//! for clipboard, selection, or transcript history.
-//!
-//! To activate deictic resolution:
-//! 1. Add `ResolverContext` to `ToolContext`
-//! 2. Implement `TranscriptProvider` (requires access to STT history)
-//! 3. Call `resolve_args()` in executor before tool.execute()
-//!
-//! Until then, tools receive raw args without reference resolution.
-
-#![allow(dead_code)]
+//! Planned references (not yet implemented):
+//! - `selection`: Currently selected text (requires Accessibility API)
+//! - `last_transcript`: Recent transcript text (requires STT history)
 
 use serde::{Deserialize, Serialize};
 

@@ -3,8 +3,10 @@
 //! This module contains implementations of traits defined in other crates,
 //! following the Adapter pattern from clean architecture.
 
+mod clipboard;
 mod event_bus;
 mod focus;
 
+pub use clipboard::PlatformClipboard;
 pub use event_bus::TauriEventBus;
 pub use focus::PlatformFocusChecker;

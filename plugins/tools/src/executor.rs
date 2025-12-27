@@ -2,12 +2,15 @@
 //!
 //! Generic executor that works with any tool through the Tool trait.
 //! Caching and cooldown are driven by tool-provided keys, not hardcoded checks.
+//! Deictic references (clipboard, selection, etc.) are resolved before execution.
 
 use std::sync::Arc;
 use std::time::Instant;
 
 use gibberish_events::{event_names, EventBus};
 
+use crate::adapters::PlatformClipboard;
+use crate::deictic::{resolve_args, ResolverContext};
 use crate::environment::RealSystemEnvironment;
 use crate::policy::{CACHE_TTL, DEFAULT_TOOL_COOLDOWN};
 use crate::registry::ToolRegistry;
@@ -112,9 +115,28 @@ pub async fn execute_tool(
     let env = Arc::new(RealSystemEnvironment::new(client));
     let ctx = ToolContext::new(env, default_lang);
 
-    emit_tool_start(&*event_bus, tool_name, args);
+    // Resolve deictic references (clipboard, selection, etc.) before execution
+    let clipboard_provider = PlatformClipboard::new();
+    let resolver_ctx = ResolverContext {
+        clipboard: Some(&clipboard_provider),
+        selection: None, // TODO: Add selection provider when available
+        transcript: None, // TODO: Add transcript provider when available
+    };
 
-    match tool.execute(args, &ctx).await {
+    let resolved_args = match resolve_args(args, &resolver_ctx) {
+        Ok(resolved) => resolved,
+        Err(e) => {
+            emit_tool_error(&*event_bus, tool_name, &format!("Failed to resolve args: {}", e));
+            return ExecutionOutcome::Failed(ToolError::ExecutionFailed(format!(
+                "Deictic resolution failed: {}",
+                e
+            )));
+        }
+    };
+
+    emit_tool_start(&*event_bus, tool_name, &resolved_args);
+
+    match tool.execute(&resolved_args, &ctx).await {
         Ok(result) => {
             // Cache the result if tool provided a cache key
             if let Some(ref cache_key) = result.cache_key {

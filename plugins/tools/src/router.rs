@@ -117,6 +117,9 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         )
     };
 
+    // Build registry once - tools don't change at runtime, only mode filtering does
+    let registry = ToolRegistry::build_all();
+
     loop {
         // Wait for debounce timeout OR new text notification
         // If notified, restart the debounce timer (more text may be coming)
@@ -163,7 +166,6 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
 
         // Build developer context and tool policies JIT based on current mode
         // This ensures the model sees the correct tools for the current mode
-        let registry = ToolRegistry::build_all();
         let (developer_context, tool_policies): (Arc<str>, Arc<HashMap<String, ToolPolicy>>) = {
             let instructions = registry.functiongemma_instructions_for_mode(router_settings.current_mode);
             let manifest_json = registry.manifest_json_for_mode(router_settings.current_mode);

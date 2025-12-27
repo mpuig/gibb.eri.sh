@@ -27,3 +27,4 @@ tokio-util.workspace = true
 half = "2"
 async-trait.workspace = true
 dirs.workspace = true
+arboard.workspace = true
