@@ -28,9 +28,9 @@ HF_FILENAME = "stt_ca_conformer_ctc_large.nemo"
 
 # Output directory
 if os.name == "nt":
-    models_dir = Path(os.environ.get("LOCALAPPDATA", "")) / "gibberish" / "models"
+    models_dir = Path(os.environ.get("LOCALAPPDATA", "")) / "gibb.eri.sh" / "models"
 else:
-    models_dir = Path.home() / "Library" / "Application Support" / "gibberish" / "models"
+    models_dir = Path.home() / "Library" / "Application Support" / "gibb.eri.sh" / "models"
 
 output_dir = models_dir / "nemo-conformer-ca"
 output_dir.mkdir(parents=True, exist_ok=True)

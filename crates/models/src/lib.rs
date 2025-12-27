@@ -128,7 +128,7 @@ impl SttModel {
 pub fn models_dir() -> PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("gibberish")
+        .join("gibb.eri.sh")
         .join("models")
 }
 

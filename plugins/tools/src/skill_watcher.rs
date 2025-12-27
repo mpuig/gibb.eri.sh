@@ -137,7 +137,7 @@ pub fn get_skill_directories() -> Vec<PathBuf> {
 
     // User skills directory
     if let Some(config_dir) = dirs::config_dir() {
-        let user_skills = config_dir.join("gibberish").join("skills");
+        let user_skills = config_dir.join("gibb.eri.sh").join("skills");
         dirs.push(user_skills); // Add even if doesn't exist (might be created later)
     }
 

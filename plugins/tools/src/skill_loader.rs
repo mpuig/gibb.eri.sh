@@ -176,9 +176,12 @@ fn get_bundled_skills_dir() -> Option<PathBuf> {
 
 /// Get the user skills directory.
 ///
-/// Returns ~/.config/gibberish/skills/
+/// Platform-specific paths:
+/// - macOS: ~/Library/Application Support/gibb.eri.sh/skills/
+/// - Linux: ~/.config/gibb.eri.sh/skills/
+/// - Windows: %APPDATA%/gibb.eri.sh/skills/
 fn get_user_skills_dir() -> Option<PathBuf> {
-    dirs::config_dir().map(|config| config.join("gibberish").join("skills"))
+    dirs::config_dir().map(|config| config.join("gibb.eri.sh").join("skills"))
 }
 
 /// Manager for loaded skills with reload capability.
