@@ -19,6 +19,7 @@ mod functiongemma_download;
 mod functiongemma_models;
 mod inference;
 mod parser;
+mod pipeline;
 mod policy;
 mod prompt_builder;
 mod registry;

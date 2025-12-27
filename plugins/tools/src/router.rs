@@ -12,6 +12,7 @@
 use crate::context_injector;
 use crate::executor::{execute_tool, ExecutionMode, ExecutionOutcome};
 use crate::inference::{self, InferenceResult};
+use crate::pipeline::{self, ChainDecision, PipelineContext};
 use crate::policy::DEBOUNCE;
 use crate::registry::ToolRegistry;
 use crate::router_logic::{self, RouterConfig};
@@ -391,72 +392,117 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             }
         };
 
-        // Optional follow-up: after a tool executes, give the model a chance to
+        // Tool chaining: after a tool executes, give the model a chance to
         // propose a next tool (e.g., `web_search` -> `typer`) based on the tool output.
+        // Uses formal pipeline with depth limits (see pipeline.rs).
         if let Some(ref output) = tool_output {
-            let runner_for_followup = {
-                let guard = state.lock().await;
-                guard.functiongemma.model.as_ref().map(|m| Arc::clone(&m.runner))
-            };
+            let pipeline_ctx = PipelineContext::new(pending_text.clone(), developer_context.clone());
 
-            if let Some(followup_runner) = runner_for_followup {
+            // Check depth limit before attempting followup
+            if !pipeline_ctx.can_chain() {
                 emit_router_status(
                     &*event_bus,
-                    "followup_infer_start",
-                    serde_json::json!({ "after_tool": proposal.tool.as_str() }),
+                    "chain_depth_limit",
+                    serde_json::json!({
+                        "max_depth": pipeline::MAX_CHAIN_DEPTH,
+                        "after_tool": proposal.tool
+                    }),
                 );
+            } else {
+                let runner_for_followup = {
+                    let guard = state.lock().await;
+                    guard.functiongemma.model.as_ref().map(|m| Arc::clone(&m.runner))
+                };
 
-                let followup_result = inference::run_followup_inference(
-                    followup_runner,
-                    developer_context.clone(),
-                    &pending_text,
-                    &proposal.tool,
-                    output,
-                )
-                .await;
-
-                if let InferenceResult::Success(followup_out) = followup_result {
+                if let Some(followup_runner) = runner_for_followup {
                     emit_router_status(
                         &*event_bus,
-                        "followup_infer_done",
-                        serde_json::json!({ "raw": followup_out.raw_text }),
+                        "followup_infer_start",
+                        serde_json::json!({
+                            "after_tool": proposal.tool.as_str(),
+                            "depth": pipeline_ctx.depth
+                        }),
                     );
 
-                    if let Some(next) = router_logic::find_best_proposal(
-                        &followup_out.proposals,
-                        &tool_policies,
-                        router_settings.min_confidence,
-                    ) {
-                        if let Some(next_policy) = policy_for_tool(&tool_policies, &next.tool) {
-                            let validated_args = validate_and_repair_args(
-                                &state,
-                                &event_bus,
-                                &developer_context,
-                                &pending_text,
-                                next_policy,
-                                &next.tool,
-                                next.args.clone(),
-                                true,
-                            )
-                            .await;
+                    let followup_result = inference::run_followup_inference(
+                        followup_runner,
+                        developer_context.clone(),
+                        &pending_text,
+                        &proposal.tool,
+                        output,
+                    )
+                    .await;
 
-                            if let Some(next_args) = validated_args {
-                                let next_execution_mode =
-                                    if router_logic::determine_execution_mode(next_policy, &router_settings) {
-                                        ExecutionMode::AutoRun
-                                    } else {
-                                        ExecutionMode::RequireApproval
-                                    };
+                    if let InferenceResult::Success(followup_out) = followup_result {
+                        emit_router_status(
+                            &*event_bus,
+                            "followup_infer_done",
+                            serde_json::json!({ "raw": followup_out.raw_text }),
+                        );
 
-                                let _ = execute_tool(
-                                    &state,
-                                    &registry,
-                                    &next.tool,
-                                    &next_args,
-                                    &next.evidence,
-                                    next_execution_mode,
-                                )
-                                .await;
+                        // Use pipeline to decide if we should chain
+                        let chain_decision = pipeline::should_chain(
+                            &pipeline_ctx,
+                            &followup_out.proposals,
+                            router_settings.min_confidence,
+                            |t| tool_policies.contains_key(t),
+                        );
+
+                        match chain_decision {
+                            ChainDecision::Continue(step) => {
+                                if let Some(next_policy) = policy_for_tool(&tool_policies, &step.tool) {
+                                    let validated_args = validate_and_repair_args(
+                                        &state,
+                                        &event_bus,
+                                        &developer_context,
+                                        &pending_text,
+                                        next_policy,
+                                        &step.tool,
+                                        step.args.clone(),
+                                        true,
+                                    )
+                                    .await;
+
+                                    if let Some(next_args) = validated_args {
+                                        let next_execution_mode =
+                                            if router_logic::determine_execution_mode(next_policy, &router_settings) {
+                                                ExecutionMode::AutoRun
+                                            } else {
+                                                ExecutionMode::RequireApproval
+                                            };
+
+                                        emit_router_status(
+                                            &*event_bus,
+                                            "chain_execute",
+                                            serde_json::json!({
+                                                "tool": step.tool,
+                                                "depth": step.depth
+                                            }),
+                                        );
+
+                                        let _ = execute_tool(
+                                            &state,
+                                            &registry,
+                                            &step.tool,
+                                            &next_args,
+                                            &step.evidence,
+                                            next_execution_mode,
+                                        )
+                                        .await;
+                                    }
+                                }
+                            }
+                            ChainDecision::LimitReached => {
+                                emit_router_status(
+                                    &*event_bus,
+                                    "chain_depth_limit",
+                                    serde_json::json!({
+                                        "max_depth": pipeline::MAX_CHAIN_DEPTH
+                                    }),
+                                );
+                            }
+                            ChainDecision::Stop => {
+                                // No followup needed
                             }
                         }
                     }
