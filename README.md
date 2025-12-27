@@ -15,13 +15,16 @@ It uses a zero-copy audio bus to stream microphone data directly to local AI mod
 
 ## Features
 
-- **Private**: Audio processed locally, never uploaded
-- **⚡️ Zero-Latency:** Words appear char-by-char as you speak (<200ms lag).
-- **🧠 Context Engine:** Detects your active app (VS Code, Zoom) to enable relevant tools automatically.
-- **🧠 Smart Turn Detection:** Uses semantic analysis (powered by **Daily.co VAD 3.1** logic) to know exactly when you've finished a sentence.
-- **Voice commands**: Local LLM (FunctionGemma) executes intents like "Search Wikipedia for..."
-- **Context-aware modes**: Tools filtered by mode (Global, Dev, Meeting) before LLM inference
-- **Hybrid inference**: Streaming (Sherpa) for instant feedback, batch (Parakeet/Whisper) for accuracy
+- **🔒 Private**: Audio processed locally, never uploaded
+- **⚡️ Zero-Latency:** Words appear char-by-char as you speak (<200ms lag)
+- **🧠 Context Engine:** Detects your active app (VS Code, Zoom, browsers) to enable relevant tools
+- **🧠 Smart Turn Detection:** Semantic analysis knows when you've finished a sentence
+- **⌨️ The Typer:** Voice-to-keyboard - speak and it types at your cursor (any app)
+- **🔍 Browser Context:** Reads your current URL for web-aware commands
+- **🛡️ Panic Hotkey:** Press Esc 3x to instantly abort any input operation
+- **🔗 Tool Chaining:** Multi-step workflows (e.g., search → summarize → type)
+- **🎯 Hybrid inference**: Streaming (Sherpa) for instant feedback, batch (Parakeet) for accuracy
+- **📝 Summarization**: Natural language summaries of tool outputs
 
 ## Requirements
 

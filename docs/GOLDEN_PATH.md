@@ -61,10 +61,12 @@ The app listens continuously and keeps the last 30 seconds of audio in a circula
 -   **The Trigger:** "Promote to Recording". If you realize you're in an important conversation, you hit Record and we "catch up" by prepending the buffer.
 -   **The Privacy:** If you don't hit record, the audio is overwritten in RAM and never touches the disk. Pure ephemeral intelligence.
 
-### 2.5. Input Emulation (The Virtual Hands)
-We control apps that don't have APIs.
--   **The Tech:** `crates/input` using `enigo` for cross-platform input simulation.
--   **The Use Case:** "Mute this tab" (Simulate `Cmd+W` or click). "Type this paragraph" (Simulate keystrokes).
+### 2.5. The Typer (Voice-to-Keyboard)
+**The headline feature: speak, and it types.**
+-   **The Tech:** `crates/input` using `enigo` for cross-platform keystroke simulation.
+-   **The Use Case:** "Type hello world" → Types "hello world" at the cursor. Works in any app.
+-   **Smart Paste:** When text is selected, "type this" replaces the selection using clipboard injection.
+-   **Context-Aware:** Knows when you're in a text field vs. a code editor vs. a terminal.
 
 ---
 
