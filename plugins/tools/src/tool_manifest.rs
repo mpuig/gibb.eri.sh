@@ -148,9 +148,6 @@ pub fn validate_and_compile(manifest_json: &str) -> Result<CompiledManifest, Str
 }
 
 /// Generate FunctionGemma declarations from tool definitions.
-///
-/// This is the JIT (just-in-time) manifest generation that builds
-/// declarations dynamically from the registry's tool definitions.
 pub fn generate_declarations(tools: &[ToolDefinition]) -> String {
     let mut declarations = String::new();
     for tool in tools {
@@ -164,7 +161,6 @@ pub fn generate_declarations(tools: &[ToolDefinition]) -> String {
     declarations
 }
 
-/// Build ToolPolicy from a ToolDefinition.
 pub fn policy_from_definition(tool: &ToolDefinition) -> ToolPolicy {
     let schema_info = extract_schema_info(&tool.args_schema, 0).unwrap_or_else(|_| SchemaInfo {
         default_lang: None,
@@ -341,7 +337,6 @@ fn functiongemma_declaration(
     Ok(out)
 }
 
-/// Extracted schema metadata from a tool definition.
 struct SchemaInfo {
     default_lang: Option<String>,
     default_sentences: Option<u8>,

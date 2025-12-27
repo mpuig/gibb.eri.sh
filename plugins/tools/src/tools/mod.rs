@@ -56,12 +56,10 @@ pub struct ToolContext {
 }
 
 impl ToolContext {
-    /// Create a new context with the given environment.
     pub fn new(env: Arc<dyn SystemEnvironment>, default_lang: String) -> Self {
         Self::with_abort(env, default_lang, Arc::new(AtomicBool::new(false)))
     }
 
-    /// Create a new context with a shared abort flag.
     pub fn with_abort(
         env: Arc<dyn SystemEnvironment>,
         default_lang: String,
@@ -74,12 +72,11 @@ impl ToolContext {
         }
     }
 
-    /// Get the HTTP client from the environment.
     pub fn client(&self) -> &reqwest::Client {
         self.env.http_client()
     }
 
-    /// Check if abort has been requested (by panic hotkey).
+    /// Set by panic hotkey (Esc x3).
     pub fn is_aborted(&self) -> bool {
         self.abort_flag.load(Ordering::SeqCst)
     }

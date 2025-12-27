@@ -58,12 +58,10 @@ impl Default for SystemContext {
 }
 
 impl SystemContext {
-    /// Get the bundle ID of the active app, if any.
     pub fn active_bundle_id(&self) -> Option<&str> {
         self.active_app.as_ref().map(|a| a.bundle_id.as_str())
     }
 
-    /// Check if a meeting app is detected.
     pub fn has_meeting_app(&self) -> bool {
         self.meeting_app.is_some()
     }
@@ -93,7 +91,6 @@ impl Default for ContextState {
 }
 
 impl ContextState {
-    /// Create a new context state from system context.
     pub fn from_system(system: SystemContext) -> Self {
         let detected_mode = crate::mode::resolve_mode(
             system.active_bundle_id(),
@@ -108,22 +105,21 @@ impl ContextState {
         }
     }
 
-    /// Get the effective mode (pinned takes priority).
+    /// Pinned mode takes priority over detected mode.
     pub fn effective_mode(&self) -> Mode {
         self.pinned_mode.unwrap_or(self.detected_mode)
     }
 
-    /// Pin a specific mode (disables auto-switching).
+    /// Disables automatic mode switching.
     pub fn pin_mode(&mut self, mode: Mode) {
         self.pinned_mode = Some(mode);
     }
 
-    /// Unpin mode (re-enable auto-switching).
+    /// Re-enables automatic mode switching.
     pub fn unpin_mode(&mut self) {
         self.pinned_mode = None;
     }
 
-    /// Update with new system context.
     pub fn update(&mut self, system: SystemContext) {
         self.detected_mode = crate::mode::resolve_mode(
             system.active_bundle_id(),
@@ -133,21 +129,7 @@ impl ContextState {
         self.system = system;
     }
 
-    /// Generate a prompt snippet describing the current context.
-    ///
-    /// Used to inject context into FunctionGemma prompts, enabling
-    /// implicit references like "search this error" or "summarize this".
-    ///
-    /// Context elements are ordered by precedence (see `limits::ContextPrecedence`):
-    /// 1. Mode (highest)
-    /// 2. Active App
-    /// 3. Meeting Status
-    /// 4. Selection (user's current focus)
-    /// 5. Clipboard
-    /// 6. URL
-    /// 7. Date (lowest)
-    ///
-    /// Sensitive content (passwords, API keys, etc.) is automatically redacted.
+    /// Build context for FunctionGemma prompts. Sensitive content is redacted.
     pub fn to_prompt_snippet(&self) -> String {
         use crate::limits::{sanitize_for_prompt, MAX_CLIPBOARD_LEN, MAX_SELECTION_LEN, MAX_URL_LEN};
 
