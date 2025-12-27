@@ -217,14 +217,26 @@ impl FunctionGemmaRunner {
         })
     }
 
-    fn parse_output(raw_text: String, evidence: &str) -> ModelOutput {
+    /// Parse model output into proposals with confidence scoring.
+    ///
+    /// Confidence levels:
+    /// - First attempt success: `base_confidence` (typically 0.85)
+    /// - Repair attempt success: lower `base_confidence` (typically 0.55)
+    /// - Multiple proposals: confidence split among them
+    fn parse_output(raw_text: String, evidence: &str, base_confidence: f32) -> ModelOutput {
         let mut proposals = Vec::new();
-        for block in crate::parser::find_function_call_blocks(&raw_text) {
+        let blocks = crate::parser::find_function_call_blocks(&raw_text);
+        let count = blocks.len().max(1) as f32;
+
+        // Split confidence among multiple proposals (e.g., if model returns 2 calls)
+        let per_proposal_confidence = base_confidence / count;
+
+        for block in blocks {
             if let Ok((tool, args)) = crate::parser::parse_functiongemma_call(block) {
                 proposals.push(Proposal {
                     tool,
                     args,
-                    confidence: 1.0,
+                    confidence: per_proposal_confidence,
                     evidence: evidence.to_string(),
                 });
             }
@@ -460,25 +472,35 @@ impl FunctionGemmaRunner {
     /// Greedy decode for a short JSON response.
     ///
     /// This is intentionally minimal; if the ONNX export supports KV cache, we can optimize later.
+    ///
+    /// Confidence scoring:
+    /// - First attempt success: 0.85 base confidence
+    /// - Repair attempt success: 0.55 base confidence (model needed guidance)
+    /// - Multiple proposals: confidence split among them
     pub fn infer_once(
         &self,
         developer_context: &str,
         committed_text: &str,
     ) -> Result<ModelOutput, FunctionGemmaError> {
         const MAX_NEW_TOKENS: usize = 160;
+        const FIRST_ATTEMPT_CONFIDENCE: f32 = 0.85;
+        const REPAIR_ATTEMPT_CONFIDENCE: f32 = 0.55;
+
         let prompt = prompt_builder::build_prompt(developer_context, committed_text);
         let decoded = self.generate_text(&prompt, MAX_NEW_TOKENS)?;
 
-        let out = Self::parse_output(decoded.clone(), committed_text);
+        let out = Self::parse_output(decoded.clone(), committed_text, FIRST_ATTEMPT_CONFIDENCE);
         if !out.proposals.is_empty() {
             return Ok(out);
         }
 
         // Retry once with a stricter repair prompt (still FunctionGemma-native).
+        // Lower confidence since the model needed explicit guidance.
         let repair_prompt =
             prompt_builder::build_repair_prompt(developer_context, committed_text, &decoded);
         let repaired = self.generate_text(&repair_prompt, 200)?;
-        let mut repaired_out = Self::parse_output(repaired.clone(), committed_text);
+        let mut repaired_out =
+            Self::parse_output(repaired.clone(), committed_text, REPAIR_ATTEMPT_CONFIDENCE);
         if repaired_out.proposals.is_empty() {
             repaired_out.raw_text = format!(
                 "{}\n\n<repair>\n{}",
