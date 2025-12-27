@@ -23,6 +23,10 @@ impl Tool for WebSearchTool {
         Cow::Borrowed("Search for information about a topic, look up facts, or answer questions")
     }
 
+    fn selection_hint(&self) -> Option<Cow<'static, str>> {
+        Some(Cow::Borrowed("search/what is/tell me about/look up"))
+    }
+
     fn example_phrases(&self) -> &'static [&'static str] {
         &[
             "tell me about Barcelona",

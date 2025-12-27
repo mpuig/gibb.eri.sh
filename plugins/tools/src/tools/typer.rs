@@ -25,6 +25,10 @@ impl Tool for TyperTool {
         Cow::Borrowed("Type text using keyboard simulation")
     }
 
+    fn selection_hint(&self) -> Option<Cow<'static, str>> {
+        Some(Cow::Borrowed("type/write text"))
+    }
+
     fn example_phrases(&self) -> &'static [&'static str] {
         &[
             "type hello world",

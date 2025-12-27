@@ -138,6 +138,15 @@ fn get_bundled_skills_dir() -> Option<PathBuf> {
         return Some(cwd_skills);
     }
 
+    // Try common development paths (when running from apps/desktop/)
+    let dev_paths = ["../../skills", "../../../skills"];
+    for dev_path in &dev_paths {
+        let path = PathBuf::from(dev_path);
+        if path.exists() {
+            return Some(path);
+        }
+    }
+
     // Try relative to executable
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(exe_dir) = exe_path.parent() {
@@ -202,6 +211,12 @@ impl SkillManager {
         // Index loaded skills
         for loaded in result.skills {
             let skill_name = loaded.definition.name.clone();
+            let tool_names: Vec<_> = loaded.tools.iter().map(|t| t.name.as_str()).collect();
+            info!(
+                skill = %skill_name,
+                tools = ?tool_names,
+                "Loaded skill"
+            );
 
             // Index tools
             for tool in &loaded.tools {
@@ -285,6 +300,7 @@ impl Clone for GenericSkillTool {
             timeout_secs: self.timeout_secs,
             tool_def: Arc::clone(&self.tool_def),
             skill_name: self.skill_name.clone(),
+            examples: self.examples.clone(),
         }
     }
 }

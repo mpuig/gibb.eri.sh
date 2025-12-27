@@ -24,6 +24,10 @@ impl Tool for PasteTool {
         Cow::Borrowed("Paste clipboard contents using system shortcut")
     }
 
+    fn selection_hint(&self) -> Option<Cow<'static, str>> {
+        Some(Cow::Borrowed("paste this/paste clipboard"))
+    }
+
     fn example_phrases(&self) -> &'static [&'static str] {
         &[
             "paste this",

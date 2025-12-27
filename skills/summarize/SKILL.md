@@ -20,6 +20,22 @@ Summarize a webpage, YouTube video, podcast, or any URL.
 | url | string | yes | The URL to summarize (webpage, YouTube, podcast, PDF) |
 | length | string | no | Output length: short, medium, long (default: medium) |
 
+#### Examples
+
+```
+User: summarize this webpage
+<start_function_call>call:summarize_url{url:<escape>https://example.com/article<escape>}<end_function_call>
+
+User: what is this page about
+<start_function_call>call:summarize_url{url:<escape>https://example.com/article<escape>}<end_function_call>
+
+User: summarize https://github.com/user/repo
+<start_function_call>call:summarize_url{url:<escape>https://github.com/user/repo<escape>}<end_function_call>
+
+User: give me a TL;DR of this article
+<start_function_call>call:summarize_url{url:<escape>https://example.com/article<escape>}<end_function_call>
+```
+
 #### Command
 
 ```bash

@@ -166,6 +166,10 @@ impl Tool for AddTodoTool {
         "Add reminders and action items to Apple Reminders".into()
     }
 
+    fn selection_hint(&self) -> Option<Cow<'static, str>> {
+        Some("add todo/action item".into())
+    }
+
     fn example_phrases(&self) -> &'static [&'static str] {
         &[
             "add todo follow up with John",

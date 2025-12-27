@@ -142,6 +142,10 @@ impl Tool for GitVoiceTool {
         "Execute git commands via voice".into()
     }
 
+    fn selection_hint(&self) -> Option<Cow<'static, str>> {
+        Some("git commands (status, commit, push, diff)".into())
+    }
+
     fn example_phrases(&self) -> &'static [&'static str] {
         &[
             "git status",

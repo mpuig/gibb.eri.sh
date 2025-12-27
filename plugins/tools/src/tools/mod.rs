@@ -145,6 +145,12 @@ pub trait Tool: Send + Sync {
         Cow::Borrowed("")
     }
 
+    /// Selection hint for FunctionGemma routing (e.g., "summarize/TL;DR/overview").
+    /// Used in the TOOL SELECTION section of the system prompt.
+    fn selection_hint(&self) -> Option<Cow<'static, str>> {
+        None
+    }
+
     /// Example voice phrases that trigger this tool (human-readable).
     fn example_phrases(&self) -> &'static [&'static str] {
         &[]
@@ -154,6 +160,12 @@ pub trait Tool: Send + Sync {
     /// "User: <input>\n<start_function_call>call:tool_name{...}<end_function_call>"
     fn few_shot_examples(&self) -> &'static [&'static str] {
         &[]
+    }
+
+    /// Owned few-shot examples for dynamic tools (skills).
+    /// Override this for tools with runtime-generated examples.
+    fn owned_few_shot_examples(&self) -> Vec<String> {
+        self.few_shot_examples().iter().map(|s| s.to_string()).collect()
     }
 
     /// Modes in which this tool is available.

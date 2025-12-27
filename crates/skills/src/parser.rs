@@ -138,11 +138,15 @@ fn parse_tool_section(name: &str, content: &str, _path: &Path) -> SkillResult<To
     // Extract command block
     let command = extract_command(content, name)?;
 
+    // Extract few-shot examples
+    let examples = extract_examples(content, name);
+
     Ok(ToolDefinition {
         name: name.to_string(),
         description,
         parameters,
         command,
+        examples,
     })
 }
 
@@ -206,6 +210,43 @@ fn extract_parameters(content: &str, _tool: &str) -> SkillResult<Vec<ParameterDe
     }
 
     Ok(params)
+}
+
+/// Extract few-shot examples from #### Examples section.
+/// Format: code block with FunctionGemma-formatted examples.
+fn extract_examples(content: &str, _tool_name: &str) -> Vec<String> {
+    let mut examples = Vec::new();
+
+    // Find Examples section
+    let examples_section = match content.find("#### Examples") {
+        Some(pos) => &content[pos..],
+        None => return examples,
+    };
+
+    // Find end of section (next #### or ---)
+    let section_end = examples_section[14..] // skip "#### Examples"
+        .find("####")
+        .or_else(|| examples_section[14..].find("\n---"))
+        .map(|p| p + 14)
+        .unwrap_or(examples_section.len());
+
+    let section_content = &examples_section[..section_end];
+
+    // Look for code block with examples
+    let code_re = Regex::new(r"```\s*\n([\s\S]*?)\n```").unwrap();
+    if let Some(cap) = code_re.captures(section_content) {
+        if let Some(code) = cap.get(1) {
+            // Split by blank lines to get individual examples
+            for example in code.as_str().split("\n\n") {
+                let example = example.trim();
+                if !example.is_empty() && example.contains("<start_function_call>") {
+                    examples.push(example.to_string());
+                }
+            }
+        }
+    }
+
+    examples
 }
 
 /// Extract command from fenced code block.
@@ -481,5 +522,39 @@ Just some text, no tools.
             ArgFragment::Literal(s) => assert_eq!(s, "hello world"),
             _ => panic!("Expected literal"),
         }
+    }
+
+    #[test]
+    fn test_extract_examples() {
+        let content = r#"### my_tool
+
+Description here.
+
+#### Parameters
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| url | string | yes | URL to process |
+
+#### Examples
+
+```
+User: what is this about
+<start_function_call>call:my_tool{url:<escape>{{URL}}<escape>}<end_function_call>
+
+User: summarize this
+<start_function_call>call:my_tool{url:<escape>{{URL}}<escape>}<end_function_call>
+```
+
+#### Command
+
+```bash
+curl {{url}}
+```
+"#;
+        let examples = extract_examples(content, "my_tool");
+        assert_eq!(examples.len(), 2);
+        assert!(examples[0].contains("what is this about"));
+        assert!(examples[1].contains("summarize this"));
     }
 }

@@ -36,6 +36,7 @@ pub struct GenericSkillTool {
     pub(crate) timeout_secs: u32,
     pub(crate) tool_def: Arc<SkillToolDefinition>,
     pub(crate) skill_name: String,
+    pub(crate) examples: Vec<String>,
 }
 
 impl GenericSkillTool {
@@ -45,6 +46,7 @@ impl GenericSkillTool {
         let description = tool.description.clone();
         let event_name = format!("tools:skill:{}", tool.name);
         let modes: Vec<Mode> = skill.modes.iter().map(|m| convert_mode(*m)).collect();
+        let examples = tool.examples.clone();
 
         Self {
             name,
@@ -55,6 +57,7 @@ impl GenericSkillTool {
             timeout_secs: skill.timeout,
             tool_def: Arc::new(tool.clone()),
             skill_name: skill.name.clone(),
+            examples,
         }
     }
 
@@ -124,12 +127,41 @@ impl Tool for GenericSkillTool {
         Cow::Owned(self.description.clone())
     }
 
+    fn selection_hint(&self) -> Option<Cow<'static, str>> {
+        // Derive hint from description - extract key action words
+        let desc = self.description.to_lowercase();
+        let mut hints = Vec::new();
+
+        if desc.contains("summarize") || desc.contains("summary") {
+            hints.push("summarize");
+        }
+        if desc.contains("tl;dr") || desc.contains("tldr") {
+            hints.push("TL;DR");
+        }
+        if desc.contains("overview") {
+            hints.push("overview");
+        }
+        if desc.contains("what is this") || desc.contains("about this") {
+            hints.push("what is this about");
+        }
+
+        if hints.is_empty() {
+            None
+        } else {
+            Some(Cow::Owned(hints.join("/")))
+        }
+    }
+
     fn modes(&self) -> Cow<'static, [Mode]> {
         Cow::Owned(self.modes.clone())
     }
 
     fn is_read_only(&self) -> bool {
         self.read_only
+    }
+
+    fn owned_few_shot_examples(&self) -> Vec<String> {
+        self.examples.clone()
     }
 
     fn args_schema(&self) -> serde_json::Value {

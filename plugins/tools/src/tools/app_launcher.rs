@@ -129,6 +129,10 @@ impl Tool for AppLauncherTool {
         "Open applications or switch to running apps".into()
     }
 
+    fn selection_hint(&self) -> Option<Cow<'static, str>> {
+        Some("open/launch/switch to app".into())
+    }
+
     fn example_phrases(&self) -> &'static [&'static str] {
         &[
             "open Safari",

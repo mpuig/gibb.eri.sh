@@ -186,7 +186,7 @@ impl TranscriptionService {
         }
 
         if chunk_count % 10 == 0 {
-            tracing::info!(
+            tracing::debug!(
                 chunk = chunk_count,
                 chunk_samples = audio_chunk.len(),
                 buffer_duration_ms = streamer.buffer_duration_ms(),

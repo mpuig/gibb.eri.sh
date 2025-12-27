@@ -101,6 +101,45 @@ fn truncate_text(text: &str, max_len: usize) -> String {
     }
 }
 
+/// Keyword-based fallback for skill tools that FunctionGemma doesn't recognize.
+///
+/// Returns a synthetic Proposal if keyword patterns match a skill tool.
+/// This handles cases where the fine-tuned model wasn't trained on skill tools.
+pub fn keyword_fallback_proposal(
+    text: &str,
+    url: Option<&str>,
+    policies: &HashMap<String, ToolPolicy>,
+) -> Option<Proposal> {
+    let text_lower = text.to_lowercase();
+
+    // Summarize patterns -> summarize_url (if URL available)
+    if policies.contains_key("summarize_url") {
+        let summarize_keywords = [
+            "summarize",
+            "summary",
+            "tl;dr",
+            "tldr",
+            "what is this page",
+            "what is this about",
+            "what does this say",
+            "overview of this",
+        ];
+
+        if summarize_keywords.iter().any(|k| text_lower.contains(k)) {
+            if let Some(url) = url {
+                return Some(Proposal {
+                    tool: "summarize_url".to_string(),
+                    args: serde_json::json!({ "url": url }),
+                    evidence: text.to_string(),
+                    confidence: 0.85,
+                });
+            }
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -420,5 +459,30 @@ mod tests {
                 _ => panic!("Mismatch in best proposal selection"),
             }
         }
+    }
+
+    #[test]
+    fn test_keyword_fallback_summarize() {
+        let mut policies = HashMap::new();
+        policies.insert("summarize_url".to_string(), make_policy(true));
+        policies.insert("web_search".to_string(), make_policy(true));
+
+        // Should match summarize keywords when URL available
+        let proposal =
+            keyword_fallback_proposal("can you summarize this page", Some("https://example.com"), &policies);
+        assert!(proposal.is_some());
+        let p = proposal.unwrap();
+        assert_eq!(p.tool, "summarize_url");
+        assert_eq!(p.args["url"], "https://example.com");
+
+        // Should not match without URL
+        let proposal = keyword_fallback_proposal("summarize this", None, &policies);
+        assert!(proposal.is_none());
+
+        // Should not match without policy
+        let empty_policies: HashMap<String, ToolPolicy> = HashMap::new();
+        let proposal =
+            keyword_fallback_proposal("summarize this page", Some("https://example.com"), &empty_policies);
+        assert!(proposal.is_none());
     }
 }

@@ -86,6 +86,10 @@ pub struct ToolDefinition {
 
     /// Command template to execute.
     pub command: CommandTemplate,
+
+    /// Few-shot examples for FunctionGemma prompts.
+    #[serde(default)]
+    pub examples: Vec<String>,
 }
 
 /// Tool parameter definition.

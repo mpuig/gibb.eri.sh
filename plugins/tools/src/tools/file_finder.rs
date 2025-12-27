@@ -154,6 +154,10 @@ impl Tool for FileFinderTool {
         "Find and open files using Spotlight search".into()
     }
 
+    fn selection_hint(&self) -> Option<Cow<'static, str>> {
+        Some("find files".into())
+    }
+
     fn example_phrases(&self) -> &'static [&'static str] {
         &[
             "find config files",

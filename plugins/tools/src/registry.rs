@@ -184,12 +184,28 @@ impl ToolRegistry {
 
         let tool_list = tool_names.join(", ");
 
-        // Collect examples from tools
-        let examples: Vec<&str> = tools
+        // Build selection hints dynamically from tools
+        let selection_hints: Vec<String> = tools
             .iter()
-            .flat_map(|t| t.few_shot_examples().iter().copied())
+            .filter_map(|t| {
+                t.selection_hint()
+                    .map(|hint| format!("- {} → {}", hint, t.name()))
+            })
+            .collect();
+        let selection_text = selection_hints.join("\n");
+
+        // Collect examples from tools (supports both static and dynamic examples)
+        let examples: Vec<String> = tools
+            .iter()
+            .flat_map(|t| t.owned_few_shot_examples())
             .collect();
         let examples_text = examples.join("\n\n");
+
+        tracing::debug!(
+            example_count = examples.len(),
+            selection_count = selection_hints.len(),
+            "FunctionGemma instructions built"
+        );
 
         format!(
             "You are an action router. Match user intent to ONE tool.\n\
@@ -197,14 +213,7 @@ impl ToolRegistry {
             Tools: {tool_list}\n\
             \n\
             TOOL SELECTION:\n\
-            - open/launch/switch to app → app_launcher\n\
-            - type/write text → typer\n\
-            - paste this/paste clipboard → paste\n\
-            - search/what is/tell me about → web_search\n\
-            - volume/mute/sleep/dnd → system_control\n\
-            - git commands (status, commit, push, diff) → git_voice\n\
-            - find files → file_finder\n\
-            - add todo/action item → add_todo\n\
+            {selection_text}\n\
             \n\
             Examples:\n\
             {examples_text}"

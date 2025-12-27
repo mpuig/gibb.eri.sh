@@ -175,6 +175,15 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
             let manifest_json = registry.manifest_json_for_mode(router_settings.current_mode);
             let compiled = crate::tool_manifest::validate_and_compile(&manifest_json)
                 .unwrap_or_default();
+
+            // Debug: log available tools
+            let tool_names: Vec<_> = compiled.policies.keys().collect();
+            tracing::debug!(
+                mode = ?router_settings.current_mode,
+                tools = ?tool_names,
+                "Router tools available"
+            );
+
             (
                 Arc::from(format!(
                     "You are a model that can do function calling with the following functions\n{}\n{}",
@@ -256,24 +265,53 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         };
 
         // Find the best proposal above confidence threshold
-        let Some(proposal) =
-            router_logic::find_best_proposal(&model_out.proposals, &tool_policies, router_settings.min_confidence)
-        else {
-            // No valid tool call found - emit feedback
-            emit_router_status(
-                &*event_bus,
-                "no_match",
-                serde_json::json!({
-                    "message": "No matching tool found for this request",
-                    "text": pending_text.chars().take(100).collect::<String>()
-                }),
-            );
-            continue;
+        let proposal = router_logic::find_best_proposal(
+            &model_out.proposals,
+            &tool_policies,
+            router_settings.min_confidence,
+        );
+
+        // If model didn't find a match, try keyword-based fallback for skill tools
+        let proposal = match proposal {
+            Some(p) => p.clone(),
+            None => {
+                // Try keyword fallback with URL from context
+                let url = injected.has_url.then(|| {
+                    // Extract URL from context snippet
+                    injected
+                        .snippet
+                        .lines()
+                        .find(|l| l.starts_with("URL: "))
+                        .map(|l| l.trim_start_matches("URL: "))
+                })
+                .flatten();
+
+                match router_logic::keyword_fallback_proposal(&pending_text, url, &tool_policies) {
+                    Some(fallback) => {
+                        tracing::info!(
+                            tool = %fallback.tool,
+                            "Using keyword fallback for skill tool"
+                        );
+                        fallback
+                    }
+                    None => {
+                        emit_router_status(
+                            &*event_bus,
+                            "no_match",
+                            serde_json::json!({
+                                "message": "No matching tool found for this request",
+                                "text": pending_text.chars().take(100).collect::<String>()
+                            }),
+                        );
+                        continue;
+                    }
+                }
+            }
         };
 
         // Check if proposal needs clarification (low confidence)
-        if router_logic::needs_clarification(proposal, &router_settings) {
-            let suggestions = router_logic::clarification_suggestions(proposal, &pending_text);
+        if router_logic::needs_clarification(&proposal, &router_settings) {
+            let suggestions = router_logic::clarification_suggestions(&proposal, &pending_text);
             emit_router_status(
                 &*event_bus,
                 "needs_clarification",

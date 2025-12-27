@@ -147,6 +147,10 @@ impl Tool for SystemControlTool {
         Cow::Borrowed("Control system settings like volume, mute, sleep, and Do Not Disturb")
     }
 
+    fn selection_hint(&self) -> Option<Cow<'static, str>> {
+        Some(Cow::Borrowed("volume/mute/sleep/dnd"))
+    }
+
     fn example_phrases(&self) -> &'static [&'static str] {
         &[
             "mute",
