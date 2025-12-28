@@ -505,6 +505,12 @@ impl FunctionGemmaRunner {
         const REPAIR_ATTEMPT_CONFIDENCE: f32 = 0.55;
 
         let prompt = prompt_builder::build_prompt(developer_context, committed_text);
+        tracing::debug!(
+            prompt_len = prompt.len(),
+            user_text = %committed_text,
+            "FunctionGemma prompt built"
+        );
+        tracing::trace!(prompt = %prompt, "Full FunctionGemma prompt");
         let decoded = self.generate_text(&prompt, MAX_NEW_TOKENS)?;
 
         let out = Self::parse_output(decoded.clone(), committed_text, FIRST_ATTEMPT_CONFIDENCE);

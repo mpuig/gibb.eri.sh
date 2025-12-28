@@ -226,6 +226,11 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         let enriched_developer_context =
             context_injector::enrich_developer_context(&developer_context, &injected.snippet);
 
+        tracing::trace!(
+            context = %enriched_developer_context,
+            "Enriched developer context for FunctionGemma"
+        );
+
         emit_router_status(
             &*event_bus,
             "infer_start",

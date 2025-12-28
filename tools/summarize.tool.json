@@ -7,11 +7,10 @@
   "modes": ["Global"],
 
   "examples": [
-    "User: summarize this webpage\ncall:summarize_url{url:<escape>{{url}}<escape>}",
-    "User: what is this page about\ncall:summarize_url{url:<escape>{{url}}<escape>}",
-    "User: give me a tl;dr\ncall:summarize_url{url:<escape>{{url}}<escape>}",
-    "User: summarize this article\ncall:summarize_url{url:<escape>{{url}}<escape>}",
-    "User: what does this say\ncall:summarize_url{url:<escape>{{url}}<escape>}"
+    "User: summarize this webpage\n<start_function_call>call:summarize_url{url:<escape>https://example.com/article<escape>}<end_function_call>",
+    "User: what is this page about\n<start_function_call>call:summarize_url{url:<escape>https://github.com/user/repo<escape>}<end_function_call>",
+    "User: give me a tl;dr\n<start_function_call>call:summarize_url{url:<escape>https://news.site.com/story<escape>}<end_function_call>",
+    "User: summarize the current page\n<start_function_call>call:summarize_url{url:<escape>https://docs.example.com/guide<escape>}<end_function_call>"
   ],
 
   "parameters": {
