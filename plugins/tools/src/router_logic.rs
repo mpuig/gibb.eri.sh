@@ -107,7 +107,7 @@ fn truncate_text(text: &str, max_len: usize) -> String {
 /// This handles cases where the fine-tuned model wasn't trained on skill tools.
 pub fn keyword_fallback_proposal(
     text: &str,
-    url: Option<&str>,
+    context_snippet: &str,
     policies: &HashMap<String, ToolPolicy>,
 ) -> Option<Proposal> {
     let text_lower = text.to_lowercase();
@@ -126,7 +126,8 @@ pub fn keyword_fallback_proposal(
         ];
 
         if summarize_keywords.iter().any(|k| text_lower.contains(k)) {
-            if let Some(url) = url {
+            // Try to extract URL from context (URL: line or Clipboard: line)
+            if let Some(url) = extract_url_from_context(context_snippet) {
                 return Some(Proposal {
                     tool: "summarize_url".to_string(),
                     args: serde_json::json!({ "url": url }),
@@ -134,6 +135,31 @@ pub fn keyword_fallback_proposal(
                     confidence: 0.85,
                 });
             }
+        }
+    }
+
+    None
+}
+
+/// Extract a URL from the context snippet.
+/// Checks both URL: line and Clipboard: line for URLs.
+pub fn extract_url_from_context(context: &str) -> Option<String> {
+    // Try URL: line first
+    if let Some(url_line) = context.lines().find(|l| l.starts_with("URL: ")) {
+        let url = url_line.trim_start_matches("URL: ").trim();
+        if !url.is_empty() {
+            return Some(url.to_string());
+        }
+    }
+
+    // Try Clipboard: line for URLs
+    if let Some(clip_line) = context.lines().find(|l| l.starts_with("Clipboard: ")) {
+        let clip_content = clip_line.trim_start_matches("Clipboard: ").trim();
+        // Remove surrounding quotes if present
+        let clip_content = clip_content.trim_matches('"');
+        // Check if clipboard contains a URL
+        if clip_content.starts_with("http://") || clip_content.starts_with("https://") {
+            return Some(clip_content.to_string());
         }
     }
 
@@ -467,22 +493,31 @@ mod tests {
         policies.insert("summarize_url".to_string(), make_policy(true));
         policies.insert("web_search".to_string(), make_policy(true));
 
-        // Should match summarize keywords when URL available
-        let proposal =
-            keyword_fallback_proposal("can you summarize this page", Some("https://example.com"), &policies);
+        // Should match summarize keywords when URL in context
+        let context = "Mode: Global\nURL: https://example.com\nDate: 2025-01-01";
+        let proposal = keyword_fallback_proposal("can you summarize this page", context, &policies);
         assert!(proposal.is_some());
         let p = proposal.unwrap();
         assert_eq!(p.tool, "summarize_url");
         assert_eq!(p.args["url"], "https://example.com");
 
-        // Should not match without URL
-        let proposal = keyword_fallback_proposal("summarize this", None, &policies);
+        // Should also work with URL in clipboard
+        let context = "Mode: Global\nClipboard: \"https://github.com/user/repo\"\nDate: 2025-01-01";
+        let proposal = keyword_fallback_proposal("summarize this", context, &policies);
+        assert!(proposal.is_some());
+        let p = proposal.unwrap();
+        assert_eq!(p.tool, "summarize_url");
+        assert_eq!(p.args["url"], "https://github.com/user/repo");
+
+        // Should not match without URL in context
+        let context = "Mode: Global\nClipboard: \"some text\"\nDate: 2025-01-01";
+        let proposal = keyword_fallback_proposal("summarize this", context, &policies);
         assert!(proposal.is_none());
 
         // Should not match without policy
         let empty_policies: HashMap<String, ToolPolicy> = HashMap::new();
-        let proposal =
-            keyword_fallback_proposal("summarize this page", Some("https://example.com"), &empty_policies);
+        let context = "Mode: Global\nURL: https://example.com\nDate: 2025-01-01";
+        let proposal = keyword_fallback_proposal("summarize this page", context, &empty_policies);
         assert!(proposal.is_none());
     }
 }

@@ -275,21 +275,16 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
         let proposal = match proposal {
             Some(p) => p.clone(),
             None => {
-                // Try keyword fallback with URL from context
-                let url = injected.has_url.then(|| {
-                    // Extract URL from context snippet
-                    injected
-                        .snippet
-                        .lines()
-                        .find(|l| l.starts_with("URL: "))
-                        .map(|l| l.trim_start_matches("URL: "))
-                })
-                .flatten();
-
-                match router_logic::keyword_fallback_proposal(&pending_text, url, &tool_policies) {
+                // Try keyword fallback using full context snippet
+                match router_logic::keyword_fallback_proposal(
+                    &pending_text,
+                    &injected.snippet,
+                    &tool_policies,
+                ) {
                     Some(fallback) => {
                         tracing::info!(
                             tool = %fallback.tool,
+                            url = ?fallback.args.get("url"),
                             "Using keyword fallback for skill tool"
                         );
                         fallback
@@ -307,6 +302,25 @@ async fn process_router_queue<R: Runtime>(app: tauri::AppHandle<R>) {
                     }
                 }
             }
+        };
+
+        // For summarize_url, override URL with actual URL from context
+        // FunctionGemma often hallucinates URLs instead of using context
+        let proposal = if proposal.tool == "summarize_url" {
+            if let Some(context_url) = router_logic::extract_url_from_context(&injected.snippet) {
+                let mut fixed = proposal.clone();
+                fixed.args["url"] = serde_json::json!(context_url);
+                tracing::debug!(
+                    original_url = ?proposal.args.get("url"),
+                    corrected_url = %context_url,
+                    "Corrected summarize_url to use context URL"
+                );
+                fixed
+            } else {
+                proposal
+            }
+        } else {
+            proposal
         };
 
         // Check if proposal needs clarification (low confidence)

@@ -142,6 +142,41 @@ function renderToolResult(activity: Activity, isExpanded: boolean): ReactNode {
     );
   }
 
+  // Handle summarize results (skill tools)
+  if (tool === "summarize_url" && result) {
+    const { success, output, error, duration_ms } = result;
+    if (success && output) {
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">
+              Summary
+            </span>
+            {duration_ms && (
+              <span className="text-[10px]" style={{ color: "var(--color-text-tertiary)" }}>
+                {(duration_ms / 1000).toFixed(1)}s
+              </span>
+            )}
+          </div>
+          <p className="text-sm leading-relaxed" style={{ color: "var(--color-text-secondary)" }}>
+            {output}
+          </p>
+        </div>
+      );
+    } else if (error) {
+      return (
+        <div className="space-y-1">
+          <span className="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400">
+            Failed
+          </span>
+          <p className="text-xs" style={{ color: "var(--color-text-tertiary)" }}>
+            {error}
+          </p>
+        </div>
+      );
+    }
+  }
+
   // Default: show tool name with expandable JSON
   return (
     <div>
@@ -183,6 +218,7 @@ export function ActivityItem({ activity, children }: ActivityItemProps) {
             <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: `${config.color}20`, color: config.color }}>
               {activity.content.tool}
             </span>
+            {STATUS_INDICATOR[activity.status]}
           </div>
         );
 
