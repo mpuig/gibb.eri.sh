@@ -32,11 +32,15 @@ mod wikipedia;
 mod skill_tool;
 mod skill_loader;
 mod skill_watcher;
+mod tool_pack;
+mod tool_pack_loader;
 
 pub use error::{Result, ToolsError};
 pub use skill_tool::GenericSkillTool;
 pub use skill_loader::{SkillManager, LoadedSkill, ReloadResult};
 pub use skill_watcher::{SkillWatcher, get_skill_directories};
+pub use tool_pack::{ToolPack, ToolPackTool, CommandDef, PolicyDef, OutputDef};
+pub use tool_pack_loader::{ToolPackManager, get_tool_pack_directories};
 
 use adapters::TauriEventBus;
 use gibberish_events::event_names;
@@ -99,6 +103,9 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::request_input_access,
             commands::reload_skills,
             commands::list_skills,
+            commands::reload_tool_packs,
+            commands::list_tool_packs,
+            commands::reload_all_tools,
         ])
         .setup(|app, _api| {
             // Create shared abort flag for panic hotkey
@@ -222,8 +229,11 @@ fn start_context_poller<R: Runtime>(app: &tauri::AppHandle<R>) {
                         // Update router manifest if mode changed
                         if prev_mode != new_mode {
                             tracing::info!(prev = %prev_mode, new = %new_mode, "Mode changed, updating router manifest");
-                            // Build registry with skills first to avoid borrow conflicts
-                            let registry = crate::registry::ToolRegistry::build_with_skills(&guard.skills);
+                            // Build registry with all tool sources to avoid borrow conflicts
+                            let registry = crate::registry::ToolRegistry::build_all_sources(
+                                &guard.skills,
+                                &guard.tool_packs,
+                            );
                             guard.router.update_with_registry(&registry, new_mode);
                         }
                         break;

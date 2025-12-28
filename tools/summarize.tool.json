@@ -1,0 +1,49 @@
+{
+  "$schema": "https://gibb.eri.sh/schemas/tool-pack.v1.json",
+  "name": "summarize_url",
+  "description": "Summarize a webpage, YouTube video, podcast, or any URL. Use when user wants a summary, TL;DR, or overview of content.",
+  "version": "1.0.0",
+
+  "modes": ["Global"],
+
+  "examples": [
+    "User: summarize this webpage\ncall:summarize_url{url:<escape>{{url}}<escape>}",
+    "User: what is this page about\ncall:summarize_url{url:<escape>{{url}}<escape>}",
+    "User: give me a tl;dr\ncall:summarize_url{url:<escape>{{url}}<escape>}",
+    "User: summarize this article\ncall:summarize_url{url:<escape>{{url}}<escape>}",
+    "User: what does this say\ncall:summarize_url{url:<escape>{{url}}<escape>}"
+  ],
+
+  "parameters": {
+    "url": {
+      "type": "string",
+      "required": true,
+      "description": "URL to summarize (webpage, YouTube, podcast, PDF)",
+      "source": "context.url"
+    },
+    "length": {
+      "type": "string",
+      "enum": ["short", "medium", "long"],
+      "default": "medium",
+      "description": "Output length preference"
+    }
+  },
+
+  "command": {
+    "program": "npx",
+    "args": ["-y", "@steipete/summarize", "{{url}}", "--length", "{{length:medium}}"]
+  },
+
+  "policy": {
+    "read_only": true,
+    "requires_network": true,
+    "timeout_secs": 120,
+    "confirm_before_run": false
+  },
+
+  "output": {
+    "format": "text",
+    "speak": true,
+    "max_chars": 500
+  }
+}

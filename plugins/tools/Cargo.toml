@@ -30,3 +30,11 @@ dirs.workspace = true
 arboard.workspace = true
 gibberish-skills.workspace = true
 notify = "6.1"
+regex = "1"
+tempfile = { version = "3", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[features]
+default = []

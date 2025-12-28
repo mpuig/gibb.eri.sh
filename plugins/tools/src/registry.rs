@@ -2,12 +2,18 @@
 //!
 //! The registry builds tool instances based on the tool manifest policies,
 //! allowing dynamic tool dispatch without hardcoded builders.
+//!
+//! Supports three sources of tools:
+//! 1. Built-in tools (Rust implementations)
+//! 2. Skill tools (from SKILL.md files - legacy)
+//! 3. Tool packs (from .tool.json files - primary extension format)
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::skill_loader::SkillManager;
 use crate::tool_manifest::ToolPolicy;
+use crate::tool_pack_loader::ToolPackManager;
 use crate::tools::{
     AddTodoTool, AppLauncherTool, FileFinderTool, GitVoiceTool, PasteTool, SystemControlTool, Tool,
     ToolDefinition, TranscriptMarkerTool, TyperTool, WebSearchTool,
@@ -53,6 +59,24 @@ impl ToolRegistry {
         registry
     }
 
+    /// Create a registry with all built-in tools plus tool packs.
+    pub fn build_with_tool_packs(tool_pack_manager: &ToolPackManager) -> Self {
+        let mut registry = Self::build_all();
+        registry.register_tool_packs(tool_pack_manager);
+        registry
+    }
+
+    /// Create a registry with all tools: built-ins + skills + tool packs.
+    pub fn build_all_sources(
+        skill_manager: &SkillManager,
+        tool_pack_manager: &ToolPackManager,
+    ) -> Self {
+        let mut registry = Self::build_all();
+        registry.register_skills(skill_manager);
+        registry.register_tool_packs(tool_pack_manager);
+        registry
+    }
+
     /// Register skill tools from a skill manager.
     pub fn register_skills(&mut self, skill_manager: &SkillManager) {
         for loaded in skill_manager.skills() {
@@ -67,6 +91,20 @@ impl ToolRegistry {
             skill_count = skill_manager.skill_count(),
             total_tools = self.tools.len(),
             "Registered skill tools"
+        );
+    }
+
+    /// Register tools from tool packs.
+    pub fn register_tool_packs(&mut self, tool_pack_manager: &ToolPackManager) {
+        for tool in tool_pack_manager.tools() {
+            let tool_arc: Arc<dyn Tool> = Arc::new(tool.clone());
+            self.tools.insert(tool.name().to_string(), tool_arc);
+        }
+
+        tracing::debug!(
+            pack_count = tool_pack_manager.pack_count(),
+            total_tools = self.tools.len(),
+            "Registered tool pack tools"
         );
     }
 

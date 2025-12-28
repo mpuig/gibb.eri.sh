@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::skill_loader::SkillManager;
+use crate::tool_pack_loader::ToolPackManager;
 use gibberish_context::ContextState;
 use gibberish_events::{EventBusRef, NullEventBus};
 
@@ -48,8 +49,10 @@ pub struct ToolsState {
     pub event_bus: EventBusRef,
     /// Global abort flag set by panic hotkey (Esc x3).
     pub global_abort: GlobalAbortFlag,
-    /// Loaded skills for user-defined tools.
+    /// Loaded skills for user-defined tools (legacy SKILL.md format).
     pub skills: SkillManager,
+    /// Loaded tool packs (primary .tool.json format).
+    pub tool_packs: ToolPackManager,
 }
 
 impl ToolsState {
@@ -60,11 +63,14 @@ impl ToolsState {
 
     /// Create a new ToolsState with a shared abort flag.
     pub fn with_abort_flag(event_bus: EventBusRef, global_abort: GlobalAbortFlag) -> Self {
-        // Load skills at startup
+        // Load skills at startup (legacy SKILL.md format)
         let skills = SkillManager::new();
 
-        // Create router with skills
-        let router = RouterState::with_skills(&skills);
+        // Load tool packs at startup (primary .tool.json format)
+        let tool_packs = ToolPackManager::new();
+
+        // Create router with all tool sources
+        let router = RouterState::with_all_tools(&skills, &tool_packs);
 
         Self {
             client: reqwest::Client::new(),
@@ -75,6 +81,7 @@ impl ToolsState {
             event_bus,
             global_abort,
             skills,
+            tool_packs,
         }
     }
 
@@ -82,10 +89,8 @@ impl ToolsState {
     pub fn reload_skills(&mut self) -> crate::skill_loader::ReloadResult {
         let result = self.skills.reload();
 
-        // Update router with new skills
-        let mode = self.context.effective_mode();
-        let registry = crate::registry::ToolRegistry::build_with_skills(&self.skills);
-        self.router.update_with_registry(&registry, mode);
+        // Update router with all tool sources
+        self.update_router();
 
         tracing::info!(
             skill_count = result.skill_count,
@@ -95,6 +100,44 @@ impl ToolsState {
         );
 
         result
+    }
+
+    /// Reload tool packs from disk and update the router.
+    pub fn reload_tool_packs(&mut self) -> crate::tool_pack_loader::ReloadResult {
+        let result = self.tool_packs.reload();
+
+        // Update router with all tool sources
+        self.update_router();
+
+        tracing::info!(
+            pack_count = result.pack_count,
+            error_count = result.errors.len(),
+            "Tool packs reloaded"
+        );
+
+        result
+    }
+
+    /// Reload all external tools (skills + tool packs) and update the router.
+    pub fn reload_all_tools(&mut self) {
+        let skills_result = self.skills.reload();
+        let packs_result = self.tool_packs.reload();
+
+        self.update_router();
+
+        tracing::info!(
+            skill_count = skills_result.skill_count,
+            pack_count = packs_result.pack_count,
+            "All tools reloaded"
+        );
+    }
+
+    /// Update the router with the current tool sources.
+    fn update_router(&mut self) {
+        let mode = self.context.effective_mode();
+        let registry =
+            crate::registry::ToolRegistry::build_all_sources(&self.skills, &self.tool_packs);
+        self.router.update_with_registry(&registry, mode);
     }
 
     /// Check if the global abort flag is set.
@@ -119,6 +162,7 @@ impl std::fmt::Debug for ToolsState {
             .field("event_bus", &"EventBusRef")
             .field("global_abort", &self.is_aborted())
             .field("skills", &self.skills)
+            .field("tool_packs", &self.tool_packs)
             .finish()
     }
 }
